@@ -163,6 +163,9 @@
     .review-meta{font-size:12px;color:var(--muted);margin-top:4px}
     .review-text{margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere}
     .review-summary{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .review-pick{display:flex;gap:6px;margin:10px 0}
+    .review-pick button{font-size:30px;color:#E6A817;padding:2px 5px}
+    textarea.review-input{width:100%;min-height:100px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit}
   </style>
 </head>
 <body>
@@ -194,11 +197,15 @@
   let reviewsLoading = false;
   let reviewsError = '';
   let publicReviews = [];
-  const residentId = 'resident-12'; // Demo resident ID; replace with a real signed-in user ID for production.
-  const skippedReviewRuns = new Set();
-  let reviewDraftRunId = null;
-  let reviewDraftRating = 5;
-  let reviewSubmitting = false;
+  // Demo user IDs start at 1. Each newly created booking receives the next unique resident ID.
+  let activeHouseNo = 1;
+  let nextResidentId = 1;
+  function allocateResidentId(){ return nextResidentId++; }
+  let selectedReviewRating = 5;
+  let skippedReviewKeys = new Set();
+  try { skippedReviewKeys = new Set(JSON.parse(localStorage.getItem('townshipSkippedReviews') || '[]')); } catch (_) {}
+  function reviewKey(runId, residentId){ return `${runId}|${residentId}`; }
+  function saveSkippedReviews(){ try { localStorage.setItem('townshipSkippedReviews', JSON.stringify([...skippedReviewKeys])); } catch (_) {} }
 
   function setupSupabase(){
     if (!window.supabase || SUPABASE_URL.includes('PASTE_YOUR_') || SUPABASE_KEY.includes('PASTE_YOUR_')) {
@@ -217,21 +224,18 @@
     reviewsLoading = true;
     reviewsError = '';
     render();
-    try {
-      const { data, error } = await supabaseClient
-        .from('service_reviews')
-        .select('id, run_id, resident_id, rating, review_text, created_at')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      publicReviews = data || [];
-      reviewsError = '';
-    } catch (error) {
-      reviewsError = 'Could not load reviews: ' + (error.message || 'Please check your internet connection and Supabase permissions.');
+    const { data, error } = await supabaseClient
+      .from('service_reviews')
+      .select('id, run_id, resident_id, rating, review_text, created_at')
+      .order('created_at', { ascending: false });
+    reviewsLoading = false;
+    if (error) {
+      reviewsError = 'Could not load reviews: ' + error.message;
       publicReviews = [];
-    } finally {
-      reviewsLoading = false;
-      render();
+    } else {
+      publicReviews = data || [];
     }
+    render();
   }
 
   /* ---------- helpers ---------- */
@@ -258,7 +262,7 @@
   const MIN_PER_HOME = 45, MAX_HOMES = 6;
 
   /* ---------- sample data ---------- */
-  const HOME = { owner:'Aina', houseNo:12, address:'No. 12, Jalan Cemara 3, Taman Hijau', street:'Jalan Cemara 3' };
+  const HOME = { owner:'Resident', houseNo:1, address:'Demo address, Taman Hijau', street:'Jalan Cemara 3' };
   const state = {
     mode:'resident', tab:'home', service:'gutter', pickDay:1, groupId:null,
     weather:null, source:'sample',
@@ -272,12 +276,11 @@
     slots:[],
     // every booking is a "run". A solo booking is a run with one home.
     runs:[
-      {id:'r1', street:HOME.street, cleaner:'c1', day:1, time:'09:00', service:'gutter', members:[5,HOME.houseNo,18], min:3, solo:false, done:{}},
-      {id:'r2', street:HOME.street, cleaner:'c3', day:4, time:'14:00', service:'full', members:[27], min:3, solo:false, done:{}},
-      {id:'r3', street:'Jalan Cemara 5', cleaner:'c1', day:2, time:'14:00', service:'gutter', members:[3,9,14,21], min:3, solo:false, done:{}},
+
     ],
     neighbourPool:[2,7,10,15,22,31,36]
   };
+  nextResidentId = Math.max(0, ...state.runs.flatMap(r => r.members.map(Number).filter(Number.isFinite))) + 1;
   const CLEANERS = [
     {id:'c1', name:'Hafiz Drain Care', rating:4.8},
     {id:'c2', name:'KL Gutter Pro', rating:4.6},
@@ -344,7 +347,7 @@
 
   /* ---------- run helpers ---------- */
   const cleanerName = id => CLEANERS.find(c=>c.id===id).name;
-  const isMine = r => r.members.includes(HOME.houseNo);
+  const isMine = r => r.members.includes(activeHouseNo);
   const status = r => r.solo || r.members.length>=r.min ? 'confirmed' : 'open';
   const full = r => r.solo || r.members.length>=MAX_HOMES;
   const deadlineText = r => r.day<=1 ? `today, 9:00 pm` : `${wk(addDays(TODAY,r.day-1))} 9:00 pm`;
@@ -401,7 +404,7 @@
     const rs = myRuns();
     if(!rs.length) return '<div class="empty">No bookings yet.</div>';
     return rs.map(r=>{
-      const doneMe = r.done[HOME.houseNo];
+      const doneMe = r.done[activeHouseNo];
       return `<div class="row"><span><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${SERVICES[r.service].label}, ${r.solo?'just you':r.members.length+' homes on your street'}</span></span>
     ${doneMe?'<span class="chip low">Cleaned</span>':`<button class="chip ${status(r)==='confirmed'?'low':'open'}" ${r.solo?'':`data-group="${r.id}"`}>RM ${priceFor(r.service,r.members.length)}</button>`}</div>`;
     }).join('');
@@ -483,7 +486,7 @@
     const r = state.runs.find(x=>x.id===state.groupId);
     if(!r) return '<div class="empty">This group run no longer exists.</div>';
     const n = r.members.length, st = status(r), mine = isMine(r), cur = tierFor(n);
-    const houses = [...r.members].sort((a,b)=>a-b).map(h=>`<span class="house ${h===HOME.houseNo?'me':''}">${h===HOME.houseNo?'You':'No. '+h}</span>`).join('')
+    const houses = [...r.members].sort((a,b)=>a-b).map(h=>`<span class="house ${h===activeHouseNo?'me':''}">${h===activeHouseNo?'You':'No. '+h}</span>`).join('')
             + Array.from({length:MAX_HOMES-n},()=>'<span class="house empty">Open</span>').join('');
     const msg = `Our street is getting roof gutters and drains cleaned together on ${dayLabel(r.day)} at ${r.time}. ${n} homes so far, RM ${priceFor(r.service,n)} each and dropping as more join. Join in the My Township app.`;
     return `<button class="back" data-go="book">‹ Book</button>
@@ -519,7 +522,7 @@
       <p class="note" style="margin-top:6px">Earnings RM ${priceFor(r.service,stops.length)*stops.length}</p>
       <div style="margin-top:6px">${stops.map((h,i)=>{
         const done = r.done[h];
-        return `<div class="stop"><span class="n">${i+1}</span><span><b>No. ${h}</b>${h===HOME.houseNo?' <span class="note">(Aina)</span>':''}<br><span class="note">Arrive about ${addMin(r.time,i*MIN_PER_HOME)}</span></span>
+        return `<div class="stop"><span class="n">${i+1}</span><span><b>No. ${h}</b>${h===activeHouseNo?' <span class="note">(Aina)</span>':''}<br><span class="note">Arrive about ${addMin(r.time,i*MIN_PER_HOME)}</span></span>
         ${done?'<span class="chip low">Done</span>':(st==='confirmed'?`<label class="btn small" style="cursor:pointer">After photo<input type="file" accept="image/*" data-done="${r.id}|${h}" hidden></label>`:'')}</div>`;
       }).join('')}</div>
     </div>`;
@@ -540,14 +543,10 @@
   }
 
   /* ---------- public service reviews ---------- */
-  function pendingReviewRuns(){
-    return myRuns().filter(r => !!r.done[HOME.houseNo]
-      && !skippedReviewRuns.has(r.id)
-      && !publicReviews.some(v => String(v.run_id) === String(r.id) && String(v.resident_id || residentId) === residentId));
-  }
-
   function screenReviews(){
-    const pending = pendingReviewRuns();
+    // Keep the currently assigned demo user. Never overwrite it with a hard-coded house number.
+    const pendingRuns = state.runs.filter(r => r.members.includes(activeHouseNo) && r.done[activeHouseNo] && !publicReviews.some(v => String(v.run_id)===String(r.id) && String(v.resident_id)===String(activeHouseNo)) && !skippedReviewKeys.has(reviewKey(r.id, activeHouseNo)));
+    const pendingHtml = pendingRuns.length ? pendingRuns.map(r => `<article class="card stack"><div class="row"><b>${escapeReviewText(SERVICES[r.service].label)}</b><span class="chip low">Completed</span></div><p class="note">Booking ${escapeReviewText(r.id)} · House No. ${activeHouseNo}</p><div class="row"><button class="btn" data-review-run="${escapeReviewText(r.id)}">Submit review</button><button class="btn ghost" data-skip-review="${escapeReviewText(r.id)}">Not now</button></div></article>`).join('') : '<div class="empty">No completed bookings waiting for review for this demo resident.</div>';
     const average = publicReviews.length
       ? (publicReviews.reduce((total, item) => total + Number(item.rating || 0), 0) / publicReviews.length).toFixed(1)
       : '—';
@@ -566,12 +565,10 @@
               </article>`;
             }).join('')
           : '<div class="empty">No reviews yet. Completed service reviews will appear here.</div>';
-    const pendingHtml = pending.length
-      ? pending.map(r => `<article class="card stack"><b>${escapeReviewText(SERVICES[r.service].label)} · Booking ${escapeReviewText(r.id)}</b><p class="note">Your service is marked complete. Would you like to leave a review?</p><div class="actions"><button class="btn small" data-review-start="${escapeReviewText(r.id)}">Submit review</button><button class="btn small ghost" data-review-skip="${escapeReviewText(r.id)}">Not now</button></div></article>`).join('')
-      : '<div class="card"><p class="note">No completed services waiting for a review.</p></div>';
 
     return `<h1>Service Reviews</h1>
       <p class="sub">Read feedback shared by residents across My Township.</p>
+      <div class="card stack" style="margin-top:14px"><b>Current demo user: User ${activeHouseNo}</b><p class="note">Only this resident's completed bookings appear here. Reviews are linked automatically to the booking and resident number; no manual switching is needed.</p></div>
       <h2>Completed services awaiting review</h2><div class="stack">${pendingHtml}</div>
       <div class="card review-summary" style="margin-top:16px">
         <div><div class="review-meta">Overall rating</div><div style="font-size:30px;font-weight:800">${average}</div></div>
@@ -579,55 +576,7 @@
       </div>
       <div class="row" style="margin:18px 0 10px"><h2 style="margin:0">All reviews</h2><button class="btn small ghost" data-refresh-reviews>Refresh</button></div>
       <div class="stack">${content}</div>
-      <p class="note" style="margin-top:14px">Reviews saved here are visible to everyone. Please do not include personal or sensitive information.</p>`;
-  }
-
-  function openReviewForm(runId){
-    reviewDraftRunId = runId;
-    reviewDraftRating = 5;
-    const r = state.runs.find(x => String(x.id) === String(runId));
-    if (!r || !r.done[HOME.houseNo]) { toast('Only completed services can be reviewed.'); return; }
-    openSheet(`<h3>Review your service</h3><p class="note" style="margin-top:6px">Booking ${escapeReviewText(runId)}</p>
-      <label style="display:block;margin-top:16px;font-weight:700">Your rating</label>
-      <div style="display:flex;gap:8px;margin-top:8px">${[1,2,3,4,5].map(n=>`<button type="button" class="btn small ${n===5?'':'ghost'}" data-review-rating="${n}" aria-label="${n} stars">${'★'.repeat(n)}</button>`).join('')}</div>
-      <label for="reviewText" style="display:block;margin-top:16px;font-weight:700">Written review (optional)</label>
-      <textarea id="reviewText" maxlength="1000" rows="4" placeholder="How was the service?" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);margin-top:8px;resize:vertical"></textarea>
-      <div class="row" style="margin-top:16px"><button class="btn ghost" id="cancelSheet">Cancel</button><button class="btn" id="submitReview">Submit review</button></div>`);
-    updateReviewRatingButtons();
-  }
-
-  function updateReviewRatingButtons(){
-    document.querySelectorAll('[data-review-rating]').forEach(b=>{
-      const selected = Number(b.dataset.reviewRating) === reviewDraftRating;
-      b.classList.toggle('ghost', !selected);
-      b.setAttribute('aria-pressed', String(selected));
-    });
-  }
-
-  async function submitReview(){
-    if (reviewSubmitting) return;
-    if (!setupSupabase()) { toast('Supabase is not connected.'); return; }
-    const runId = reviewDraftRunId;
-    const r = state.runs.find(x => String(x.id) === String(runId));
-    if (!r || !r.done[HOME.houseNo]) { toast('This service is not marked complete.'); closeSheet(); return; }
-    const reviewText = ($('#reviewText')?.value || '').trim();
-    reviewSubmitting = true;
-    const button = $('#submitReview'); if (button) { button.disabled = true; button.textContent = 'Submitting…'; }
-    try {
-      const { error } = await supabaseClient.from('service_reviews').insert({
-        run_id: String(runId), resident_id: residentId, rating: reviewDraftRating, review_text: reviewText
-      });
-      if (error) throw error;
-      closeSheet();
-      toast('Review submitted successfully');
-      await loadPublicReviews();
-    } catch (error) {
-      const message = error.message || 'Please try again.';
-      toast(message.includes('duplicate') || message.includes('unique') ? 'You have already reviewed this booking.' : 'Could not submit review: ' + message);
-    } finally {
-      reviewSubmitting = false;
-      render();
-    }
+      <p class="note" style="margin-top:14px">Reviews saved to Supabase are visible to everyone. This prototype assigns a new numeric user ID to each new booking. A real deployment should use authenticated resident accounts.</p>`;
   }
 
   function escapeReviewText(value){
@@ -663,10 +612,24 @@
     const d = t.dataset;
     if(d.tab){ go(d.tab); if(d.tab==='reviews') loadPublicReviews(); return; }
     if(d.refreshReviews) return loadPublicReviews();
-    if(d.reviewStart) return openReviewForm(d.reviewStart);
-    if(d.reviewSkip){ skippedReviewRuns.add(d.reviewSkip); render(); return toast('You can review later if you change your mind.'); }
-    if(d.reviewRating){ reviewDraftRating = Number(d.reviewRating); updateReviewRatingButtons(); return; }
-    if(t.id==='submitReview') return submitReview();
+    if(d.reviewRun){
+      selectedReviewRating = 5;
+      const rid = d.reviewRun;
+      return openSheet(`<h3>Submit service review</h3><p class="note" style="margin-top:6px">Booking ${escapeReviewText(rid)} · House No. ${activeHouseNo}</p><p style="margin-top:14px"><b>Your rating</b></p><div class="review-pick">${[1,2,3,4,5].map(n=>`<button type="button" data-review-star="${n}" aria-label="${n} stars">${n<=selectedReviewRating?'★':'☆'}</button>`).join('')}</div><label for="reviewText"><b>Written review (optional)</b></label><textarea id="reviewText" class="review-input" maxlength="1000" placeholder="Share your experience..."></textarea><div class="row" style="margin-top:16px"><button class="btn ghost" id="cancelSheet">Cancel</button><button class="btn" data-submit-review="${escapeReviewText(rid)}">Submit review</button></div>`);
+    }
+    if(d.reviewStar){ selectedReviewRating = Number(d.reviewStar); const stars = $('#sheet').querySelector('.review-pick'); if(stars) stars.innerHTML = [1,2,3,4,5].map(n=>`<button type="button" data-review-star="${n}" aria-label="${n} stars">${n<=selectedReviewRating?'★':'☆'}</button>`).join(''); return; }
+    if(d.skipReview){ skippedReviewKeys.add(reviewKey(d.skipReview, activeHouseNo)); saveSkippedReviews(); render(); return toast('You can leave this review later by clearing the skipped state in this demo.'); }
+    if(d.submitReview){
+      const rid = d.submitReview;
+      const comment = ($('#reviewText')?.value || '').trim();
+      if(!setupSupabase()) return toast('Supabase is not connected');
+      t.disabled = true; t.textContent = 'Submitting…';
+      supabaseClient.from('service_reviews').insert({run_id:String(rid), resident_id:String(activeHouseNo), rating:selectedReviewRating, review_text:comment}).then(({error})=>{
+        if(error){ t.disabled=false; t.textContent='Submit review'; return toast('Submit failed: '+error.message); }
+        closeSheet(); toast('Review submitted'); loadPublicReviews();
+      });
+      return;
+    }
     if(d.go) return go(d.go);
     if(d.group){ state.groupId = d.group; return go('group'); }
     if(d.svc){ state.service = d.svc; return render(); }
@@ -689,22 +652,26 @@
     if(t.id==='cancelSheet') return closeSheet();
     if(t.id==='confirmSolo'){
       const s = takeSlot(d.slot);
-      state.runs.push({id:'r'+Date.now(), street:HOME.street, cleaner:s.cleaner, day:s.day, time:s.time, service:state.service, members:[HOME.houseNo], min:1, solo:true, done:{}});
-      closeSheet(); render(); return toast('Booking confirmed');
+      const userId = allocateResidentId();
+      activeHouseNo = userId;
+      state.runs.push({id:'r'+Date.now(), street:HOME.street, cleaner:s.cleaner, day:s.day, time:s.time, service:state.service, members:[userId], min:1, solo:true, done:{}});
+      closeSheet(); render(); return toast(`Booking confirmed. Your demo user ID is ${userId}.`);
     }
     if(t.id==='confirmGroup'){
       const s = takeSlot(d.slot), id = 'r'+Date.now();
-      state.runs.push({id, street:HOME.street, cleaner:s.cleaner, day:s.day, time:s.time, service:state.service, members:[HOME.houseNo], min:+$('#minSel').value, solo:false, done:{}});
-      closeSheet(); state.groupId = id; go('group'); return toast('Group started. Share it with your neighbours.');
+      const userId = allocateResidentId();
+      activeHouseNo = userId;
+      state.runs.push({id, street:HOME.street, cleaner:s.cleaner, day:s.day, time:s.time, service:state.service, members:[userId], min:+$('#minSel').value, solo:false, done:{}});
+      closeSheet(); state.groupId = id; go('group'); return toast(`Group started. Your demo user ID is ${userId}.`);
     }
     if(d.join){
       const r = state.runs.find(x=>x.id===d.join); const was = status(r);
-      r.members.push(HOME.houseNo); render();
+      r.members.push(activeHouseNo); render();
       return toast(status(r)==='confirmed' && was!=='confirmed' ? `Group is going ahead. Everyone now pays RM ${priceFor(r.service,r.members.length)}` : `You joined. Price is now RM ${priceFor(r.service,r.members.length)}`);
     }
     if(d.leave){
       const r = state.runs.find(x=>x.id===d.leave);
-      r.members = r.members.filter(h=>h!==HOME.houseNo);
+      r.members = r.members.filter(h=>h!==activeHouseNo);
       if(!r.members.length){ state.runs = state.runs.filter(x=>x!==r); state.slots.push({id:`${r.cleaner}-${r.day}-${r.time}`, cleaner:r.cleaner, day:r.day, time:r.time}); go('book'); }
       else render();
       return toast('You left the group');
@@ -728,13 +695,14 @@
     }
   });
   document.addEventListener('change', e=>{
-    const inp = e.target; if(!inp.dataset.done || !inp.files[0]) return;
+    const inp = e.target;
+    if(!inp.dataset.done || !inp.files[0]) return;
     const [rid, h] = inp.dataset.done.split('|'); const r = state.runs.find(x=>x.id===rid);
     const reader = new FileReader();
     reader.onload = () => {
       r.done[h] = reader.result;
-      if(+h===HOME.houseNo) state.points.filter(p=> r.service==='gutter' ? p.id.startsWith('g') : true).forEach(p=>p.last = new Date(TODAY));
-      render(); toast(`No. ${h} done, resident notified`);
+      if(+h===activeHouseNo) state.points.filter(p=> r.service==='gutter' ? p.id.startsWith('g') : true).forEach(p=>p.last = new Date(TODAY));
+      render(); toast(`No. ${h} done. That resident can now review this booking.`);
     };
     reader.readAsDataURL(inp.files[0]);
   });
