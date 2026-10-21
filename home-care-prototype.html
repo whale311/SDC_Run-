@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -158,6 +159,11 @@
     .linkbtn{font-size:13px;color:var(--muted);text-decoration:underline;margin-top:10px}
     a.btn{text-decoration:none;display:inline-block}
     @media (prefers-reduced-motion:reduce){.progress i{transition:none}}
+
+    .review-stars{color:#E6A817;letter-spacing:2px;font-size:17px}
+    .review-meta{font-size:12px;color:var(--muted);margin-top:4px}
+    .review-text{margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere}
+    .review-summary{display:flex;align-items:center;justify-content:space-between;gap:12px}
   </style>
 </head>
 <body>
@@ -176,7 +182,51 @@
   <div class="toast" id="toast" role="status"></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+  /*
+   * Supabase setup:
+   * Replace both placeholder values with your own Project URL and publishable/anon key.
+   * Never put a service_role or secret key in this public HTML file.
+   */
+  const SUPABASE_URL = 'PASTE_YOUR_SUPABASE_PROJECT_URL_HERE';
+  const SUPABASE_KEY = 'PASTE_YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY_HERE';
+  let supabaseClient = null;
+  let reviewsLoading = false;
+  let reviewsError = '';
+  let publicReviews = [];
+
+  function setupSupabase(){
+    if (!window.supabase || SUPABASE_URL.includes('PASTE_YOUR_') || SUPABASE_KEY.includes('PASTE_YOUR_')) {
+      return false;
+    }
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    return true;
+  }
+
+  async function loadPublicReviews(){
+    if (!setupSupabase()) {
+      reviewsError = 'Supabase is not connected yet. Add your Project URL and publishable key in the code.';
+      render();
+      return;
+    }
+    reviewsLoading = true;
+    reviewsError = '';
+    render();
+    const { data, error } = await supabaseClient
+      .from('service_reviews')
+      .select('id, run_id, rating, review_text, created_at')
+      .order('created_at', { ascending: false });
+    reviewsLoading = false;
+    if (error) {
+      reviewsError = 'Could not load reviews: ' + error.message;
+      publicReviews = [];
+    } else {
+      publicReviews = data || [];
+    }
+    render();
+  }
+
   /* ---------- helpers ---------- */
   const DAY = 86400000;
   const TODAY = new Date(); TODAY.setHours(0,0,0,0);
@@ -482,15 +532,53 @@
   <div class="card list-plain">${open.length?open.map(s=>`<div class="row"><b>${dayLabel(s.day)} ${s.time}</b><span class="note">Not booked</span></div>`).join(''):'<div class="empty">All your slots are booked.</div>'}</div>`;
   }
 
+  /* ---------- public service reviews ---------- */
+  function screenReviews(){
+    const average = publicReviews.length
+      ? (publicReviews.reduce((total, item) => total + Number(item.rating || 0), 0) / publicReviews.length).toFixed(1)
+      : '—';
+    const content = reviewsLoading
+      ? '<div class="empty">Loading reviews…</div>'
+      : reviewsError
+        ? `<div class="card stack"><p>${escapeReviewText(reviewsError)}</p><button class="btn small" data-refresh-reviews>Try again</button></div>`
+        : publicReviews.length
+          ? publicReviews.map(item => {
+              const rating = Math.max(0, Math.min(5, Number(item.rating) || 0));
+              const date = item.created_at ? new Date(item.created_at).toLocaleDateString('en-MY') : '';
+              return `<article class="card">
+                <div class="row"><b>Service review</b><span class="review-stars" aria-label="${rating} out of 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</span></div>
+                <div class="review-meta">${date ? escapeReviewText(date) + ' · ' : ''}Booking ${escapeReviewText(item.run_id || '')}</div>
+                <p class="review-text">${escapeReviewText(item.review_text || 'No written comment.')}</p>
+              </article>`;
+            }).join('')
+          : '<div class="empty">No reviews yet. Completed service reviews will appear here.</div>';
+
+    return `<h1>Service Reviews</h1>
+      <p class="sub">Read feedback shared by residents across My Township.</p>
+      <div class="card review-summary" style="margin-top:16px">
+        <div><div class="review-meta">Overall rating</div><div style="font-size:30px;font-weight:800">${average}</div></div>
+        <div style="text-align:right"><div class="review-stars">${publicReviews.length ? '★'.repeat(Math.round(Number(average))) : '☆☆☆☆☆'}</div><div class="review-meta">${publicReviews.length} review${publicReviews.length===1?'':'s'}</div></div>
+      </div>
+      <div class="row" style="margin:18px 0 10px"><h2 style="margin:0">All reviews</h2><button class="btn small ghost" data-refresh-reviews>Refresh</button></div>
+      <div class="stack">${content}</div>
+      <p class="note" style="margin-top:14px">This page is public. Review submission will be enabled after bookings and completed-service records are stored and verified in the database.</p>`;
+  }
+
+  function escapeReviewText(value){
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    })[ch]);
+  }
+
   /* ---------- render ---------- */
   const TABS = {
-    resident:[['home','Home',I.home],['myhome','My home',I.drop],['weather','Rain',I.cloud],['book','Book',I.people]],
+    resident:[['home','Home',I.home],['myhome','My home',I.drop],['weather','Rain',I.cloud],['book','Book',I.people],['reviews','Reviews',I.chat]],
     worker:[['jobs','Runs',I.list],['slots','Slots',I.cal]]
   };
   function render(){
     const main = $('#main');
     if(!state.weather){ main.innerHTML = '<div class="empty">Loading forecast…</div>'; return; }
-    const map = {home:screenHome, myhome:screenMyHome, weather:screenWeather, book:screenBook, group:screenGroup, jobs:screenJobs, slots:screenSlots};
+    const map = {home:screenHome, myhome:screenMyHome, weather:screenWeather, book:screenBook, group:screenGroup, jobs:screenJobs, slots:screenSlots, reviews:screenReviews};
     main.innerHTML = map[state.tab]();
     const tabs = TABS[state.mode==='resident'?'resident':'worker'];
     const current = state.tab==='group'?'book':state.tab;
@@ -507,7 +595,8 @@
   document.addEventListener('click', e=>{
     const t = e.target.closest('button'); if(!t){ if(e.target.id==='sheetBg') closeSheet(); return; }
     const d = t.dataset;
-    if(d.tab) return go(d.tab);
+    if(d.tab){ go(d.tab); if(d.tab==='reviews') loadPublicReviews(); return; }
+    if(d.refreshReviews) return loadPublicReviews();
     if(d.go) return go(d.go);
     if(d.group){ state.groupId = d.group; return go('group'); }
     if(d.svc){ state.service = d.svc; return render(); }
