@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -165,12 +163,6 @@
     .review-meta{font-size:12px;color:var(--muted);margin-top:4px}
     .review-text{margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere}
     .review-summary{display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .booking-review-row{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--line)}
-    .review-choice{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-    .rating-picker{display:flex;gap:8px;margin:8px 0 14px}
-    .rating-picker button{font-size:30px;color:#E6A817;padding:2px 4px}
-    .review-form textarea{width:100%;min-height:100px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;resize:vertical}
-    .review-form label{display:block;font-weight:700;margin:12px 0 6px}
   </style>
 </head>
 <body>
@@ -202,9 +194,11 @@
   let reviewsLoading = false;
   let reviewsError = '';
   let publicReviews = [];
-  let reviewDraftRunId = null;
-  let reviewSubmitBusy = false;
+  const residentId = 'resident-12'; // Demo resident ID; replace with a real signed-in user ID for production.
   const skippedReviewRuns = new Set();
+  let reviewDraftRunId = null;
+  let reviewDraftRating = 5;
+  let reviewSubmitting = false;
 
   function setupSupabase(){
     if (!window.supabase || SUPABASE_URL.includes('PASTE_YOUR_') || SUPABASE_KEY.includes('PASTE_YOUR_')) {
@@ -223,18 +217,21 @@
     reviewsLoading = true;
     reviewsError = '';
     render();
-    const { data, error } = await supabaseClient
-      .from('service_reviews')
-      .select('id, run_id, resident_id, rating, review_text, created_at')
-      .order('created_at', { ascending: false });
-    reviewsLoading = false;
-    if (error) {
-      reviewsError = 'Could not load reviews: ' + error.message;
-      publicReviews = [];
-    } else {
+    try {
+      const { data, error } = await supabaseClient
+        .from('service_reviews')
+        .select('id, run_id, resident_id, rating, review_text, created_at')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
       publicReviews = data || [];
+      reviewsError = '';
+    } catch (error) {
+      reviewsError = 'Could not load reviews: ' + (error.message || 'Please check your internet connection and Supabase permissions.');
+      publicReviews = [];
+    } finally {
+      reviewsLoading = false;
+      render();
     }
-    render();
   }
 
   /* ---------- helpers ---------- */
@@ -275,7 +272,7 @@
     slots:[],
     // every booking is a "run". A solo booking is a run with one home.
     runs:[
-      {id:'r1', street:HOME.street, cleaner:'c1', day:1, time:'09:00', service:'gutter', members:[5,18], min:3, solo:false, done:{}},
+      {id:'r1', street:HOME.street, cleaner:'c1', day:1, time:'09:00', service:'gutter', members:[5,HOME.houseNo,18], min:3, solo:false, done:{}},
       {id:'r2', street:HOME.street, cleaner:'c3', day:4, time:'14:00', service:'full', members:[27], min:3, solo:false, done:{}},
       {id:'r3', street:'Jalan Cemara 5', cleaner:'c1', day:2, time:'14:00', service:'gutter', members:[3,9,14,21], min:3, solo:false, done:{}},
     ],
@@ -405,13 +402,8 @@
     if(!rs.length) return '<div class="empty">No bookings yet.</div>';
     return rs.map(r=>{
       const doneMe = r.done[HOME.houseNo];
-      const alreadyReviewed = publicReviews.some(x=>String(x.run_id)===String(r.id) && String(x.resident_id)===String(HOME.houseNo));
-      const reviewAction = doneMe
-        ? (alreadyReviewed ? '<span class="chip low">Reviewed</span>'
-          : skippedReviewRuns.has(String(r.id)) ? '<button class="btn small ghost" data-review-again="'+r.id+'">Review service</button>'
-          : `<div class="review-choice"><span class="chip low">Service completed</span><button class="btn small" data-review-run="${r.id}">Submit review</button><button class="btn small ghost" data-skip-review="${r.id}">Not now</button></div>`)
-        : `<button class="chip ${status(r)==='confirmed'?'low':'open'}" ${r.solo?'':`data-group="${r.id}"`}>RM ${priceFor(r.service,r.members.length)}</button>`;
-      return `<div class="booking-review-row"><div><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${SERVICES[r.service].label}, ${r.solo?'just you':r.members.length+' homes on your street'}</span></div>${doneMe?reviewAction:reviewAction}</div>`;
+      return `<div class="row"><span><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${SERVICES[r.service].label}, ${r.solo?'just you':r.members.length+' homes on your street'}</span></span>
+    ${doneMe?'<span class="chip low">Cleaned</span>':`<button class="chip ${status(r)==='confirmed'?'low':'open'}" ${r.solo?'':`data-group="${r.id}"`}>RM ${priceFor(r.service,r.members.length)}</button>`}</div>`;
     }).join('');
   }
 
@@ -548,7 +540,14 @@
   }
 
   /* ---------- public service reviews ---------- */
+  function pendingReviewRuns(){
+    return myRuns().filter(r => !!r.done[HOME.houseNo]
+      && !skippedReviewRuns.has(r.id)
+      && !publicReviews.some(v => String(v.run_id) === String(r.id) && String(v.resident_id || residentId) === residentId));
+  }
+
   function screenReviews(){
+    const pending = pendingReviewRuns();
     const average = publicReviews.length
       ? (publicReviews.reduce((total, item) => total + Number(item.rating || 0), 0) / publicReviews.length).toFixed(1)
       : '—';
@@ -567,29 +566,13 @@
               </article>`;
             }).join('')
           : '<div class="empty">No reviews yet. Completed service reviews will appear here.</div>';
+    const pendingHtml = pending.length
+      ? pending.map(r => `<article class="card stack"><b>${escapeReviewText(SERVICES[r.service].label)} · Booking ${escapeReviewText(r.id)}</b><p class="note">Your service is marked complete. Would you like to leave a review?</p><div class="actions"><button class="btn small" data-review-start="${escapeReviewText(r.id)}">Submit review</button><button class="btn small ghost" data-review-skip="${escapeReviewText(r.id)}">Not now</button></div></article>`).join('')
+      : '<div class="card"><p class="note">No completed services waiting for a review.</p></div>';
 
-    const eligibleRuns = myRuns().filter(r=>r.done[HOME.houseNo] &&
-      !publicReviews.some(x=>String(x.run_id)===String(r.id) && String(x.resident_id)===String(HOME.houseNo)));
-    const reviewForm = reviewDraftRunId ? (() => {
-      const r = eligibleRuns.find(x=>String(x.id)===String(reviewDraftRunId));
-      if(!r) return '';
-      return `<section class="card review-form" style="margin-top:16px">
-        <h2 style="margin:0 0 6px">Review completed service</h2>
-        <p class="note">Booking ${escapeReviewText(r.id)} · ${escapeReviewText(SERVICES[r.service].label)}</p>
-        <label>Rating</label>
-        <div class="rating-picker" role="group" aria-label="Choose a rating">
-          ${[1,2,3,4,5].map(n=>`<button type="button" data-rating="${n}" aria-label="${n} star${n>1?'s':''}" aria-pressed="${(window.reviewRating||5)===n}">${(window.reviewRating||5)>=n?'★':'☆'}</button>`).join('')}
-        </div>
-        <label for="reviewText">Your comments (optional)</label>
-        <textarea id="reviewText" maxlength="1000" placeholder="Share your experience…">${escapeReviewText(window.reviewTextDraft||'')}</textarea>
-        <div class="row" style="margin-top:12px"><button class="btn ghost" data-cancel-review>Cancel</button><button class="btn" data-submit-review="${escapeReviewText(r.id)}" ${reviewSubmitBusy?'disabled':''}>${reviewSubmitBusy?'Submitting…':'Submit review'}</button></div>
-      </section>`;
-    })() : '';
     return `<h1>Service Reviews</h1>
       <p class="sub">Read feedback shared by residents across My Township.</p>
-      ${reviewForm}
-      <h2>Completed services awaiting review</h2>
-      <div class="card list-plain">${eligibleRuns.length ? eligibleRuns.map(r=>`<div class="row"><span><b>${escapeReviewText(SERVICES[r.service].label)}</b><br><span class="note">Booking ${escapeReviewText(r.id)}</span></span><button class="btn small" data-review-run="${escapeReviewText(r.id)}">Review</button></div>`).join('') : '<p class="note">No completed services waiting for a review.</p>'}</div>
+      <h2>Completed services awaiting review</h2><div class="stack">${pendingHtml}</div>
       <div class="card review-summary" style="margin-top:16px">
         <div><div class="review-meta">Overall rating</div><div style="font-size:30px;font-weight:800">${average}</div></div>
         <div style="text-align:right"><div class="review-stars">${publicReviews.length ? '★'.repeat(Math.round(Number(average))) : '☆☆☆☆☆'}</div><div class="review-meta">${publicReviews.length} review${publicReviews.length===1?'':'s'}</div></div>
@@ -599,35 +582,58 @@
       <p class="note" style="margin-top:14px">Reviews saved here are visible to everyone. Please do not include personal or sensitive information.</p>`;
   }
 
+  function openReviewForm(runId){
+    reviewDraftRunId = runId;
+    reviewDraftRating = 5;
+    const r = state.runs.find(x => String(x.id) === String(runId));
+    if (!r || !r.done[HOME.houseNo]) { toast('Only completed services can be reviewed.'); return; }
+    openSheet(`<h3>Review your service</h3><p class="note" style="margin-top:6px">Booking ${escapeReviewText(runId)}</p>
+      <label style="display:block;margin-top:16px;font-weight:700">Your rating</label>
+      <div style="display:flex;gap:8px;margin-top:8px">${[1,2,3,4,5].map(n=>`<button type="button" class="btn small ${n===5?'':'ghost'}" data-review-rating="${n}" aria-label="${n} stars">${'★'.repeat(n)}</button>`).join('')}</div>
+      <label for="reviewText" style="display:block;margin-top:16px;font-weight:700">Written review (optional)</label>
+      <textarea id="reviewText" maxlength="1000" rows="4" placeholder="How was the service?" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);margin-top:8px;resize:vertical"></textarea>
+      <div class="row" style="margin-top:16px"><button class="btn ghost" id="cancelSheet">Cancel</button><button class="btn" id="submitReview">Submit review</button></div>`);
+    updateReviewRatingButtons();
+  }
+
+  function updateReviewRatingButtons(){
+    document.querySelectorAll('[data-review-rating]').forEach(b=>{
+      const selected = Number(b.dataset.reviewRating) === reviewDraftRating;
+      b.classList.toggle('ghost', !selected);
+      b.setAttribute('aria-pressed', String(selected));
+    });
+  }
+
+  async function submitReview(){
+    if (reviewSubmitting) return;
+    if (!setupSupabase()) { toast('Supabase is not connected.'); return; }
+    const runId = reviewDraftRunId;
+    const r = state.runs.find(x => String(x.id) === String(runId));
+    if (!r || !r.done[HOME.houseNo]) { toast('This service is not marked complete.'); closeSheet(); return; }
+    const reviewText = ($('#reviewText')?.value || '').trim();
+    reviewSubmitting = true;
+    const button = $('#submitReview'); if (button) { button.disabled = true; button.textContent = 'Submitting…'; }
+    try {
+      const { error } = await supabaseClient.from('service_reviews').insert({
+        run_id: String(runId), resident_id: residentId, rating: reviewDraftRating, review_text: reviewText
+      });
+      if (error) throw error;
+      closeSheet();
+      toast('Review submitted successfully');
+      await loadPublicReviews();
+    } catch (error) {
+      const message = error.message || 'Please try again.';
+      toast(message.includes('duplicate') || message.includes('unique') ? 'You have already reviewed this booking.' : 'Could not submit review: ' + message);
+    } finally {
+      reviewSubmitting = false;
+      render();
+    }
+  }
+
   function escapeReviewText(value){
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
       '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
     })[ch]);
-  }
-
-  async function submitReview(runId){
-    if(reviewSubmitBusy) return;
-    const run = myRuns().find(r=>String(r.id)===String(runId));
-    if(!run || !run.done[HOME.houseNo]) return toast('Only completed services can be reviewed');
-    if(!setupSupabase()) return toast('Supabase is not connected');
-    const rating = Number(window.reviewRating || 5);
-    const reviewText = ($('#reviewText')?.value || '').trim();
-    if(rating < 1 || rating > 5) return toast('Please choose 1 to 5 stars');
-    reviewSubmitBusy = true; window.reviewTextDraft = reviewText; render();
-    const { error } = await supabaseClient.from('service_reviews').insert({
-      run_id: String(run.id), resident_id: String(HOME.houseNo), rating, review_text: reviewText
-    });
-    reviewSubmitBusy = false;
-    if(error){
-      render();
-      if(error.code === '23505') return toast('You have already reviewed this booking');
-      reviewsError = 'Could not submit review: ' + error.message;
-      return toast(error.code === '42501' ? 'Database insert permission is not enabled yet' : 'Could not submit review. Please try again.');
-    }
-    reviewDraftRunId = null; window.reviewTextDraft = '';
-    await loadPublicReviews();
-    go('reviews');
-    toast('Thank you! Your review is now public.');
   }
 
   /* ---------- render ---------- */
@@ -657,22 +663,10 @@
     const d = t.dataset;
     if(d.tab){ go(d.tab); if(d.tab==='reviews') loadPublicReviews(); return; }
     if(d.refreshReviews) return loadPublicReviews();
-    if(d.reviewRun || d.reviewAgain){
-      reviewDraftRunId = String(d.reviewRun || d.reviewAgain);
-      window.reviewRating = 5; window.reviewTextDraft = '';
-      go('reviews'); loadPublicReviews(); return;
-    }
-    if(d.skipReview){
-      skippedReviewRuns.add(String(d.skipReview));
-      render(); return toast('You can submit a review later from Reviews');
-    }
-    if(d.cancelReview){ reviewDraftRunId = null; window.reviewTextDraft=''; return render(); }
-    if(d.rating){
-      window.reviewRating = Number(d.rating);
-      const field = $('#reviewText'); if(field) window.reviewTextDraft = field.value;
-      return render();
-    }
-    if(d.submitReview) return submitReview(d.submitReview);
+    if(d.reviewStart) return openReviewForm(d.reviewStart);
+    if(d.reviewSkip){ skippedReviewRuns.add(d.reviewSkip); render(); return toast('You can review later if you change your mind.'); }
+    if(d.reviewRating){ reviewDraftRating = Number(d.reviewRating); updateReviewRatingButtons(); return; }
+    if(t.id==='submitReview') return submitReview();
     if(d.go) return go(d.go);
     if(d.group){ state.groupId = d.group; return go('group'); }
     if(d.svc){ state.service = d.svc; return render(); }
