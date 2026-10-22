@@ -2,7 +2,7 @@
 //
 // Purpose: the "Smart Reason" agent. Takes structured facts about a resident's
 // drain points, the rain forecast, and (for invites) a group-run, and asks
-// Claude to write a short, grounded, personalised message explaining WHY —
+// an LLM to write a short, grounded, personalised message explaining WHY —
 // instead of the app's static template strings.
 //
 // This function NEVER throws a hard error to the caller: on any failure
@@ -11,17 +11,25 @@
 // signal to fall back to the existing static template, so a flaky network
 // or an expired key during a live demo never breaks the app.
 //
+// Uses Google's Gemini API (free tier via aistudio.google.com, no credit
+// card required) instead of a paid provider.
+//
 // Deploy:
 //   supabase functions deploy generate-message
-// Configure the secret once per project:
-//   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+// Configure the secret once per project (get a free key at aistudio.google.com -> "Get API key"):
+//   supabase secrets set GEMINI_API_KEY=AIza...
 //
-// Required secret: ANTHROPIC_API_KEY (your own key from console.anthropic.com).
+// Required secret: GEMINI_API_KEY.
 // Never put this key in the frontend HTML — it only lives here, server-side.
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-haiku-4-5"; // fast + cheap, plenty for 2-3 sentence generation
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+// gemini-3.8-flash (the newest flagship) kept returning 503 "high demand" —
+// switched to the "latest" lite alias: Google manages which concrete model
+// version it points to, it's cheaper/lower-latency to serve (so less likely
+// to be capacity-constrained), and it's more than enough quality for a
+// 2-3 sentence notification.
+const MODEL = "gemini-flash-lite-latest";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 const SYSTEM_PROMPT = `You write short, grounded notifications for a home-maintenance app used by homeowners in a Malaysian residential township.
 
@@ -80,9 +88,16 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
 
-  if (!ANTHROPIC_API_KEY) {
-    // Not configured yet — tell the caller plainly so it falls back silently.
-    return jsonResponse({ error: "not_configured" });
+  if (!GEMINI_API_KEY) {
+    // TEMPORARY DIAGNOSTIC: the secret shows as set via `supabase secrets
+    // list`, but this function still can't see it. List every env var name
+    // containing "GEMINI" (never the value) so we can see exactly what the
+    // runtime actually has — catches a typo'd name, stray whitespace, etc.
+    // Remove this debug_env_keys line once the real cause is found.
+    const debugKeys = Object.keys(Deno.env.toObject()).filter((k) =>
+      k.toUpperCase().includes("GEMINI")
+    );
+    return jsonResponse({ error: "not_configured", debug_env_keys: debugKeys });
   }
 
   let body: Record<string, unknown>;
@@ -99,18 +114,30 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const resp = await fetch(ANTHROPIC_URL, {
+    // Google is rolling out newer "auth key" API keys (prefixed "AQ.") that
+    // replace the older "AIzaSy..." keys. The old ?key=... query-param auth
+    // does not reliably work with the new key type — the current docs
+    // (ai.google.dev/gemini-api/docs/generate-content/api-key) specify the
+    // x-goog-api-key header instead, which works for both key formats.
+    const resp = await fetch(GEMINI_URL, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "x-goog-api-key": GEMINI_API_KEY,
       },
       body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 200,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ parts: [{ text: userPrompt }] }],
+        // gemini-3.8-flash "thinks" before answering by default (thinkingLevel
+        // defaults to "medium"), and those thinking tokens are deducted from
+        // the same maxOutputTokens budget as the visible reply. At 200 tokens
+        // thinking was eating almost the whole budget, so the real answer
+        // came back cut off mid-sentence. Set thinking to "low" (the lowest
+        // level this model supports) and give enough headroom for both.
+        generationConfig: {
+          maxOutputTokens: 1024,
+          thinkingConfig: { thinkingLevel: "low" },
+        },
       }),
     });
 
@@ -120,7 +147,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const data = await resp.json();
-    const message = data?.content?.[0]?.text?.trim();
+    const message = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (!message) {
       return jsonResponse({ error: "empty_response" });
     }
