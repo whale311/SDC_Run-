@@ -238,6 +238,35 @@
     render();
   }
 
+  /* ---------- Smart Reason agent ----------
+   * Calls a Supabase Edge Function ("generate-message") that asks Claude to
+   * write a short, data-grounded message instead of a static template:
+   *  - 'home_alert'    : why THIS resident should act on their own drains now
+   *  - 'invite_message': why THIS resident is inviting a neighbour, right now
+   * On any failure (not deployed yet, offline, timeout, upstream error) this
+   * resolves to null and callers fall back to the existing static text —
+   * the app never breaks because the agent is unavailable. */
+  const AGENT_URL = `${SUPABASE_URL}/functions/v1/generate-message`;
+  async function generateSmartMessage(type, payload, timeoutMs = 3500){
+    if (!setupSupabase()) return null;
+    try{
+      const controller = new AbortController();
+      const timer = setTimeout(()=>controller.abort(), timeoutMs);
+      const res = await fetch(AGENT_URL, {
+        method:'POST',
+        headers:{ 'content-type':'application/json', 'apikey':SUPABASE_KEY, 'authorization':`Bearer ${SUPABASE_KEY}` },
+        body: JSON.stringify({ type, ...payload }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if(!res.ok) return null;
+      const data = await res.json();
+      return data.message || null;
+    }catch(_){
+      return null;
+    }
+  }
+
   /* ---------- helpers ---------- */
   const DAY = 86400000;
   const TODAY = new Date(); TODAY.setHours(0,0,0,0);
@@ -266,6 +295,7 @@
   const state = {
     mode:'resident', tab:'home', service:'gutter', pickDay:1, groupId:null,
     weather:null, source:'sample',
+    smartAlert:null, smartAlertSig:null,
     points:[
       {id:'g1', name:'Front roof gutter', interval:30, last:addDays(TODAY,-41), tree:true},
       {id:'g2', name:'Rear roof gutter', interval:30, last:addDays(TODAY,-19), tree:false},
@@ -383,9 +413,33 @@
   </section>`;
   }
   function alertCards(){
-    return alerts().map(a=>`<div class="alert ${a.kind}"><h3>${a.title}</h3><p>${a.body}</p>
+    return alerts().map(a=>{
+      const smart = state.smartAlert && state.smartAlert.kind===a.kind ? state.smartAlert.text : null;
+      return `<div class="alert ${a.kind}"><h3>${a.title}</h3><p>${smart || a.body}</p>
+    ${smart?'<p class="note" style="margin-top:4px">Written for your home, just now.</p>':''}
     ${a.kind==='calm'?'':`<div class="actions"><button class="btn small" data-go="book">Book a cleaner</button><button class="btn small ghost" data-go="myhome">I’ll do it myself</button></div>`}
-  </div>`).join('');
+  </div>`;
+    }).join('');
+  }
+
+  /* Fires once per distinct (top-alert-kind + points state); swaps the
+   * static alert body for an agent-written one when it arrives, and
+   * re-renders only if the resident is still looking at the home tab. */
+  async function maybeFetchSmartAlert(){
+    const top = alerts().find(a=>a.kind!=='calm');
+    if(!top) return;
+    const sig = top.kind+'|'+state.points.map(p=>p.id+':'+daysSince(p.last)).join(',');
+    if(state.smartAlertSig===sig) return;
+    state.smartAlertSig = sig;
+    const text = await generateSmartMessage('home_alert', {
+      service: state.service,
+      points: state.points.map(p=>({name:p.name, daysOverdue:daysSince(p.last), nearTree:!!p.tree})),
+      weather: state.weather.days.slice(0,RULES.lookAheadDays).map((wd,i)=>({day:dayLabel(i), rainMm:wd.rain})),
+    });
+    if(text){
+      state.smartAlert = { kind: top.kind, text };
+      if(state.tab==='home') render();
+    }
   }
   function groupCard(r){
     const n = r.members.length, st = status(r), mine = isMine(r);
@@ -488,7 +542,6 @@
     const n = r.members.length, st = status(r), mine = isMine(r), cur = tierFor(n);
     const houses = [...r.members].sort((a,b)=>a-b).map(h=>`<span class="house ${h===activeHouseNo?'me':''}">${h===activeHouseNo?'You':'No. '+h}</span>`).join('')
             + Array.from({length:MAX_HOMES-n},()=>'<span class="house empty">Open</span>').join('');
-    const msg = `Our street is getting roof gutters and drains cleaned together on ${dayLabel(r.day)} at ${r.time}. ${n} homes so far, RM ${priceFor(r.service,n)} each and dropping as more join. Join in the My Township app.`;
     return `<button class="back" data-go="book">‹ Book</button>
   <h1>${HOME.street} run</h1>
   <p class="sub">${dayLabel(r.day)} ${dm(addDays(TODAY,r.day))}, starts ${r.time}. ${SERVICES[r.service].label} by ${cleanerName(r.cleaner)}.</p>
@@ -503,7 +556,7 @@
   <p class="note" style="margin-top:8px">Everyone pays the lowest price the group reaches, including those who joined first.</p>
   <div class="actions" style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
     ${mine?'<button class="btn ghost" data-leave="'+r.id+'">Leave group</button>':(n<MAX_HOMES?`<button class="btn" data-join="${r.id}">Join for RM ${priceFor(r.service,n+1)}</button>`:'<span class="note">This run is full.</span>')}
-    <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Share on WhatsApp</a>
+    <button class="btn ghost" data-smart-invite="${r.id}">Share on WhatsApp</button>
   </div>
   <p class="note" style="margin-top:14px">If fewer than ${r.min} homes join by the deadline, you can go ahead at the current price or cancel for free.</p>
   ${n<MAX_HOMES?`<button class="linkbtn" data-sim="${r.id}">Demo: a neighbour joins</button>`:''}`;
@@ -599,6 +652,7 @@
     const current = state.tab==='group'?'book':state.tab;
     $('#tabs').style.gridTemplateColumns = `repeat(${tabs.length},1fr)`;
     $('#tabs').innerHTML = tabs.map(([id,label,ic])=>`<button data-tab="${id}" ${current===id?'aria-current="page"':''}>${ic}${label}</button>`).join('');
+    if(state.tab==='home') maybeFetchSmartAlert();
   }
   function go(tab){ state.tab = tab; render(); $('#main').scrollTop = 0; }
   function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2400); }
@@ -627,6 +681,21 @@
       supabaseClient.from('service_reviews').insert({run_id:String(rid), resident_id:String(activeHouseNo), rating:selectedReviewRating, review_text:comment}).then(({error})=>{
         if(error){ t.disabled=false; t.textContent='Submit review'; return toast('Submit failed: '+error.message); }
         closeSheet(); toast('Review submitted'); loadPublicReviews();
+      });
+      return;
+    }
+    if(d.smartInvite){
+      const r = state.runs.find(x=>x.id===d.smartInvite);
+      if(!r) return;
+      const fallback = `Our street is getting roof gutters and drains cleaned together on ${dayLabel(r.day)} at ${r.time}. ${r.members.length} homes so far, RM ${priceFor(r.service,r.members.length)} each and dropping as more join. Join in the My Township app.`;
+      toast('Writing a personal note…');
+      generateSmartMessage('invite_message', {
+        service: r.service,
+        points: state.points.map(p=>({name:p.name, daysOverdue:daysSince(p.last), nearTree:!!p.tree})),
+        weather: state.weather.days.slice(0,RULES.lookAheadDays).map((wd,i)=>({day:dayLabel(i), rainMm:wd.rain})),
+        run: { day:dayLabel(r.day), time:r.time, priceNow:priceFor(r.service,r.members.length), members:r.members.length, min:r.min },
+      }).then(text=>{
+        window.open(`https://wa.me/?text=${encodeURIComponent(text || fallback)}`, '_blank', 'noopener');
       });
       return;
     }
