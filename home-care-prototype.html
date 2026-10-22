@@ -193,6 +193,13 @@
    */
   const SUPABASE_URL = 'https://vfkobtliewosdnpydjyb.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_7zeVb-2PXmlnUPJUOx8TNg_a0twFkDT';
+
+  /* Separate Supabase project used ONLY to host the Smart Reason agent's
+   * Edge Function. Kept apart from SUPABASE_URL/SUPABASE_KEY above (which
+   * are for the reviews feature) so the two features don't depend on the
+   * same project or the same account's access. */
+  const AGENT_SUPABASE_URL = 'https://yjoylcsdootqfhidfwmx.supabase.co';
+  const AGENT_SUPABASE_KEY = 'sb_publishable_-3yqGFJZ82T6FpkbSbgv4Q_hv6ao35r';
   let supabaseClient = null;
   let reviewsLoading = false;
   let reviewsError = '';
@@ -246,15 +253,21 @@
    * On any failure (not deployed yet, offline, timeout, upstream error) this
    * resolves to null and callers fall back to the existing static text —
    * the app never breaks because the agent is unavailable. */
-  const AGENT_URL = `${SUPABASE_URL}/functions/v1/generate-message`;
-  async function generateSmartMessage(type, payload, timeoutMs = 3500){
-    if (!setupSupabase()) return null;
+  const AGENT_URL = `${AGENT_SUPABASE_URL}/functions/v1/generate-message`;
+  // 3.5s was too tight: real round-trips to the Gemini-backed Edge Function
+  // (network + LLM generation) regularly run longer than that, especially on
+  // the first call, so every attempt was silently timing out and falling
+  // back to the static text before the real answer ever arrived. 10s still
+  // keeps a hard ceiling so a dead network can't hang the UI, but gives a
+  // normal response enough room to actually come back.
+  async function generateSmartMessage(type, payload, timeoutMs = 10000){
+    if (AGENT_SUPABASE_URL.includes('PASTE_YOUR_') || AGENT_SUPABASE_KEY.includes('PASTE_YOUR_')) return null;
     try{
       const controller = new AbortController();
       const timer = setTimeout(()=>controller.abort(), timeoutMs);
       const res = await fetch(AGENT_URL, {
         method:'POST',
-        headers:{ 'content-type':'application/json', 'apikey':SUPABASE_KEY, 'authorization':`Bearer ${SUPABASE_KEY}` },
+        headers:{ 'content-type':'application/json', 'apikey':AGENT_SUPABASE_KEY, 'authorization':`Bearer ${AGENT_SUPABASE_KEY}` },
         body: JSON.stringify({ type, ...payload }),
         signal: controller.signal,
       });
@@ -283,6 +296,14 @@
 
   /* ---------- rules (tune after interviews) ---------- */
   const RULES = { heavyRainMm:20, wetPast3dMm:30, dryDayMm:2, lookAheadDays:3 };
+  // Demo mode: visit this file with ?demo=1 in the address bar to force the
+  // storm-alert threshold low enough that it reliably fires against whatever
+  // the real forecast happens to be that day — so a live demo/recording
+  // doesn't depend on actual heavy rain being forecast at that moment.
+  // Does not affect the app for anyone who opens it normally (no ?demo=1).
+  if (new URLSearchParams(location.search).get('demo') === '1') {
+    RULES.heavyRainMm = 1;
+  }
   const SERVICES = { gutter:{label:'Roof gutters', price:70}, full:{label:'Full home check', price:120} };
   // price per home by group size; price only goes down as more homes join
   const TIERS = [ {from:1, label:'1 home', mult:1}, {from:2, label:'2–3 homes', mult:0.86}, {from:4, label:'4–5 homes', mult:0.76}, {from:6, label:'6 homes', mult:0.72} ];
@@ -295,7 +316,7 @@
   const state = {
     mode:'resident', tab:'home', service:'gutter', pickDay:1, groupId:null,
     weather:null, source:'sample',
-    smartAlert:null, smartAlertSig:null,
+    smartAlert:null, smartAlertSig:null, smartAlertPending:null,
     points:[
       {id:'g1', name:'Front roof gutter', interval:30, last:addDays(TODAY,-41), tree:true},
       {id:'g2', name:'Rear roof gutter', interval:30, last:addDays(TODAY,-19), tree:false},
@@ -429,14 +450,23 @@
     const top = alerts().find(a=>a.kind!=='calm');
     if(!top) return;
     const sig = top.kind+'|'+state.points.map(p=>p.id+':'+daysSince(p.last)).join(',');
-    if(state.smartAlertSig===sig) return;
-    state.smartAlertSig = sig;
+    // Bug fixed here: this used to record `sig` as "handled" BEFORE the fetch
+    // resolved, so a single slow/failed attempt (e.g. a cold start on the
+    // very first call of the page) permanently blocked any retry for that
+    // page load, even though a later attempt would have succeeded. Now a
+    // signature is only locked in after a real success; `smartAlertPending`
+    // just prevents firing a second concurrent request for the same state
+    // while one is already in flight.
+    if(state.smartAlertSig===sig || state.smartAlertPending===sig) return;
+    state.smartAlertPending = sig;
     const text = await generateSmartMessage('home_alert', {
       service: state.service,
       points: state.points.map(p=>({name:p.name, daysOverdue:daysSince(p.last), nearTree:!!p.tree})),
       weather: state.weather.days.slice(0,RULES.lookAheadDays).map((wd,i)=>({day:dayLabel(i), rainMm:wd.rain})),
     });
+    if(state.smartAlertPending===sig) state.smartAlertPending = null;
     if(text){
+      state.smartAlertSig = sig;
       state.smartAlert = { kind: top.kind, text };
       if(state.tab==='home') render();
     }
@@ -688,14 +718,29 @@
       const r = state.runs.find(x=>x.id===d.smartInvite);
       if(!r) return;
       const fallback = `Our street is getting roof gutters and drains cleaned together on ${dayLabel(r.day)} at ${r.time}. ${r.members.length} homes so far, RM ${priceFor(r.service,r.members.length)} each and dropping as more join. Join in the My Township app.`;
-      toast('Writing a personal note…');
+      // Used to call window.open() straight from the .then() of an async
+      // fetch, which Chrome's popup blocker routinely kills silently
+      // (window.open only reliably escapes the blocker when it runs
+      // synchronously inside the click handler, not after an awaited
+      // delay) — so the invite could "work" and still never visibly do
+      // anything. Showing the text in-page with a real <a href> the
+      // person clicks themselves sidesteps the blocker entirely, and is
+      // also a better demo: the generated text is visible on screen
+      // instead of flashing past into another tab.
+      openSheet(`<h3>Writing a personal note…</h3><p class="note" style="margin-top:8px">This takes a few seconds.</p>`);
       generateSmartMessage('invite_message', {
         service: r.service,
         points: state.points.map(p=>({name:p.name, daysOverdue:daysSince(p.last), nearTree:!!p.tree})),
         weather: state.weather.days.slice(0,RULES.lookAheadDays).map((wd,i)=>({day:dayLabel(i), rainMm:wd.rain})),
         run: { day:dayLabel(r.day), time:r.time, priceNow:priceFor(r.service,r.members.length), members:r.members.length, min:r.min },
       }).then(text=>{
-        window.open(`https://wa.me/?text=${encodeURIComponent(text || fallback)}`, '_blank', 'noopener');
+        const finalText = text || fallback;
+        const waLink = `https://wa.me/?text=${encodeURIComponent(finalText)}`;
+        const safeText = finalText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        openSheet(`<h3>Your WhatsApp invite</h3>
+        ${text?'<p class="note" style="margin-top:6px">Written for this run, just now.</p>':''}
+        <div class="card" style="padding:14px;margin-top:12px;white-space:pre-wrap">${safeText}</div>
+        <div class="row" style="margin-top:16px"><button class="btn ghost" id="cancelSheet">Close</button><a class="btn" href="${waLink}" target="_blank" rel="noopener">Open in WhatsApp</a></div>`);
       });
       return;
     }
