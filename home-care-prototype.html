@@ -36,6 +36,7 @@
       body{align-items:stretch}
       .phone{width:100%;height:100%;border-radius:0;box-shadow:none}
     }
+    .concept select{font-size:11px;padding:2px 4px;border-radius:6px}
     .concept{font-size:11px;text-align:center;padding:6px 12px;background:var(--soft);color:var(--muted);padding-top:calc(6px + env(safe-area-inset-top,0px))}
 
     header.top{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px}
@@ -135,6 +136,26 @@
     select,input[type="time"]{padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface)}
     @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 
+    /* demo: lock-screen style push banner */
+    .concept .demo{margin-top:4px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+    .concept .mini{font-size:11px;font-weight:600;padding:2px 10px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+    .push{position:absolute;left:10px;right:10px;top:10px;z-index:30;display:flex;gap:10px;align-items:flex-start;text-align:left;padding:10px 12px;border-radius:18px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.28);transform:translateY(-140%);opacity:0;visibility:hidden;transition:transform .35s ease,opacity .35s ease,visibility 0s .35s}
+    .push.show{transform:none;opacity:1;visibility:visible;transition-delay:0s}
+    .push.tapped{background:var(--soft)}
+    .push .pic{flex:none;width:34px;height:34px;border-radius:9px;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center}
+    .push .pic svg{width:20px;height:20px}
+    .push .pt{min-width:0;flex:1}
+    .push .pm{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+    .push b{display:block;font-size:14px;line-height:1.3}
+    .push .pb{display:block;font-size:13px;color:var(--muted);line-height:1.35}
+    @media (prefers-reduced-motion:reduce){.push{transition:none}}
+
+    /* order status: 4-step tracker on a booking */
+    .steps{display:flex;gap:4px;margin-top:8px}
+    .steps i{flex:1;height:4px;border-radius:4px;background:var(--line)}
+    .steps i.on{background:var(--brand)}
+    .stepnote{display:block;font-size:12px;font-weight:600;margin-top:4px}
+
     .back{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--brand);margin:4px 0 10px}
     .progress{height:10px;border-radius:10px;background:var(--soft);overflow:hidden;margin-top:10px;position:relative}
     .progress i{display:block;height:100%;background:var(--brand);border-radius:10px;transition:width .4s}
@@ -162,7 +183,9 @@
 </head>
 <body>
 <div class="phone" id="phone">
-  <div class="concept">Concept prototype for the Township of Tomorrow hackathon. Prices and residents are sample data.</div>
+  <div class="concept">Concept prototype for the Township of Tomorrow hackathon. Prices and residents are sample data.
+    <label>Weather: <select id="wx" aria-label="Weather source"><option value="live">Live</option><option value="storm">Demo: heavy rain</option><option value="aedes">Demo: after storm</option><option value="calm">Demo: calm</option></select></label>
+    <div class="demo"><button class="mini" id="pushDemo">Demo push</button><button class="mini" id="pushFlow">Play demo flow</button></div></div>
   <header class="top">
     <div class="brand">My Township</div>
     <div class="mode" role="group" aria-label="View as">
@@ -174,6 +197,7 @@
   <nav class="tabs" id="tabs"></nav>
   <div class="sheet-bg" id="sheetBg"><div class="sheet" id="sheet"></div></div>
   <div class="toast" id="toast" role="status"></div>
+  <button class="push" id="push" aria-live="polite" tabindex="-1"><span class="pic" aria-hidden="true"></span><span class="pt"><span class="pm"><span>My Township</span><span>now</span></span><b id="pushTitle"></b><span class="pb" id="pushBody"></span></span></button>
 </div>
 
 <script>
@@ -201,7 +225,7 @@
   const MIN_PER_HOME = 45, MAX_HOMES = 6;
 
   /* ---------- sample data ---------- */
-  const HOME = { owner:'Aina', houseNo:12, address:'No. 12, Jalan Cemara 3, Taman Hijau', street:'Jalan Cemara 3' };
+  const HOME = { owner:'Aina', houseNo:12, address:'No. 12, Jalan Cemara 3, Taman Hijau', street:'Jalan Cemara 3', lat:3.107, lon:101.607 };
   const state = {
     mode:'resident', tab:'home', service:'gutter', pickDay:1, groupId:null,
     weather:null, source:'sample',
@@ -233,24 +257,46 @@
       if(!used && r()<0.4) state.slots.push({id:`${c.id}-${d}-${t}`, cleaner:c.id, day:d, time:t});
     }));
   })();
-  const SAMPLE_WEATHER = { past:[18,22,9], days:[0,1,26,34,0.5,0,12], prob:[20,30,80,90,25,15,55] };
+  /* simulated weather for demos and as the offline fallback; past = last 3 days (mm), days = today + 6 */
+  const SCENARIOS = {
+    storm:{ label:'Heavy rain Thu–Fri', past:[3,5,2], days:[0,1,26,34,0.5,0,12], prob:[20,30,80,90,25,15,55] },
+    aedes:{ label:'Dry spell after storm', past:[35,12,8], days:[0,0.5,3,8,2,0,10], prob:[15,20,40,60,30,15,45] },
+    calm: { label:'Calm week', past:[0,2,0], days:[0,3,5,2,0,1,4], prob:[10,25,35,20,10,15,30] },
+  };
+  const simulatedWeather = key => { const s = SCENARIOS[key];
+    return { past:s.past.slice(), days:s.days.map((v,i)=>({date:addDays(TODAY,i), rain:v, prob:s.prob[i]})) }; };
 
   /* ---------- weather (Open-Meteo, free, no key) ---------- */
-  async function loadWeather(){
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=3.107&longitude=101.607&daily=precipitation_sum,precipitation_probability_max&timezone=Asia%2FKuala_Lumpur&past_days=3&forecast_days=7';
+  const round1 = v => Math.round((v||0)*10)/10;
+  function parseForecast(j){
+    const d = j && j.daily;
+    // past_days=3 + forecast_days=7 -> 10 daily values, first 3 are the past
+    if(!d || !Array.isArray(d.precipitation_sum) || d.precipitation_sum.length<10) throw new Error('unexpected forecast response');
+    const p = d.precipitation_sum, pr = d.precipitation_probability_max || [];
+    return {
+      past: p.slice(0,3).map(round1),
+      days: p.slice(3,10).map((v,i)=>({date:addDays(TODAY,i), rain:round1(v), prob:pr[i+3]??0}))
+    };
+  }
+  async function fetchLiveWeather(){
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${HOME.lat}&longitude=${HOME.lon}&daily=precipitation_sum,precipitation_probability_max&timezone=Asia%2FKuala_Lumpur&past_days=3&forecast_days=7`;
+    const ctrl = new AbortController(), timer = setTimeout(()=>ctrl.abort(), 6000);
     try{
-      const res = await fetch(url);
+      const res = await fetch(url,{signal:ctrl.signal});
       if(!res.ok) throw new Error(res.status);
-      const j = await res.json();
-      const p = j.daily.precipitation_sum, pr = j.daily.precipitation_probability_max;
-      state.weather = {
-        past: p.slice(0,3).map(v=>Math.round((v||0)*10)/10),
-        days: p.slice(3,10).map((v,i)=>({date:addDays(TODAY,i), rain:Math.round((v||0)*10)/10, prob:pr[i+3]??0}))
-      };
-      state.source = 'live';
-    }catch(e){
-      state.weather = { past:SAMPLE_WEATHER.past, days:SAMPLE_WEATHER.days.map((v,i)=>({date:addDays(TODAY,i), rain:v, prob:SAMPLE_WEATHER.prob[i]})) };
-      state.source = 'sample';
+      return parseForecast(await res.json());
+    } finally { clearTimeout(timer); }
+  }
+  /* mode: 'live' | a SCENARIOS key. ?weather=storm in the URL picks the starting mode. */
+  async function loadWeather(mode){
+    mode = mode || new URLSearchParams(location.search).get('weather') || 'live';
+    if(mode!=='live' && !SCENARIOS[mode]) mode = 'live';
+    $('#wx').value = mode;
+    if(mode==='live'){
+      try{ state.weather = await fetchLiveWeather(); state.source = 'live'; }
+      catch(e){ state.weather = simulatedWeather('storm'); state.source = 'sample'; }
+    }else{
+      state.weather = simulatedWeather(mode); state.source = 'demo'; state.scenario = SCENARIOS[mode].label;
     }
     render();
   }
@@ -268,7 +314,7 @@
     const heavy = w.days.slice(0,RULES.lookAheadDays).find(d=>d.rain>=RULES.heavyRainMm);
     const due = state.points.filter(p=>risk(p).level!=='low');
     if(heavy && due.length){
-      out.push({kind:'storm', title:`Heavy rain ${rel(heavy.date)}: ${heavy.rain} mm`,
+      out.push({kind:'storm', day:w.days.indexOf(heavy), due:due.length, title:`Heavy rain ${rel(heavy.date)}: ${heavy.rain} mm`,
         body:`${due.length} drain point${due.length>1?'s are':' is'} due for cleaning. Clear ${due.length>1?'them':'it'} first so water doesn’t back up onto your balcony or ceiling.`});
     }
     let windowDay = null;
@@ -292,6 +338,12 @@
   const full = r => r.solo || r.members.length>=MAX_HOMES;
   const deadlineText = r => r.day<=1 ? `today, 9:00 pm` : `${wk(addDays(TODAY,r.day-1))} 9:00 pm`;
   const myRuns = () => state.runs.filter(isMine).sort((a,b)=>a.day-b.day||a.time.localeCompare(b.time));
+  /* order status: 1 booked/waiting, 2 confirmed, 3 cleaner on the way, 4 cleaned (derived from the run) */
+  const ORDER_STEPS = ['Booked','Confirmed','On the way','Cleaned'];
+  const orderStep = r => r.done[HOME.houseNo] ? 4 : r.stage==='enroute' ? 3 : status(r)==='confirmed' ? 2 : 1;
+  const orderNote = r => ({1:`Waiting for ${r.min-r.members.length} more home${r.min-r.members.length>1?'s':''} to join`, 2:`Confirmed for ${dayLabel(r.day)} ${r.time}`, 3:'Cleaner is on the way', 4:'Cleaned, after photo sent'})[orderStep(r)];
+  const stepper = r => `<span class="steps" role="img" aria-label="Order status: ${ORDER_STEPS[orderStep(r)-1]}">${ORDER_STEPS.map((_,i)=>`<i class="${i<orderStep(r)?'on':''}"></i>`).join('')}</span><span class="stepnote">${orderNote(r)}</span>`;
+  const allDone = r => r.members.every(m=>r.done[m]);
   const streetGroups = () => state.runs.filter(r=>!r.solo && r.street===HOME.street && !full(r)).sort((a,b)=>a.day-b.day);
 
   /* ---------- icons ---------- */
@@ -314,7 +366,7 @@
     const max = Math.max(40, ...w.days.map(d=>d.rain));
     const thrPct = RULES.heavyRainMm/max*100;
     return `<section class="rainbox" aria-label="Rain forecast for the next 7 days">
-    <div class="rainhead"><strong>Rain this week</strong><span class="src">${state.source==='live'?'Live forecast, Open-Meteo':'Sample forecast (offline)'}</span></div>
+    <div class="rainhead"><strong>Rain this week</strong><span class="src">${state.source==='live'?'Live forecast, Open-Meteo':state.source==='demo'?'Demo: '+state.scenario:'Sample forecast (offline)'}</span></div>
     <div class="strip">
       <div class="threshold" style="bottom:${thrPct}%"><span>Heavy ${RULES.heavyRainMm} mm</span></div>
       ${w.days.map(d=>`<div class="bar ${d.rain>=RULES.heavyRainMm?'heavy':''}"><b>${d.rain}</b><i style="height:${Math.max(3,d.rain/max*100)}%"></i></div>`).join('')}
@@ -345,7 +397,7 @@
     if(!rs.length) return '<div class="empty">No bookings yet.</div>';
     return rs.map(r=>{
       const doneMe = r.done[HOME.houseNo];
-      return `<div class="row"><span><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${SERVICES[r.service].label}, ${r.solo?'just you':r.members.length+' homes on your street'}</span></span>
+      return `<div class="row"><span><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${SERVICES[r.service].label}, ${r.solo?'just you':r.members.length+' homes on your street'}</span>${stepper(r)}</span>
     ${doneMe?'<span class="chip low">Cleaned</span>':`<button class="chip ${status(r)==='confirmed'?'low':'open'}" ${r.solo?'':`data-group="${r.id}"`}>RM ${priceFor(r.service,r.members.length)}</button>`}</div>`;
     }).join('');
   }
@@ -460,6 +512,7 @@
       <div class="row"><span><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${r.street}, ${stops.length} home${stops.length>1?'s':''} in one trip, ${SERVICES[r.service].label.toLowerCase()}</span></span>
       <span class="chip ${st==='confirmed'?'low':'open'}">${st==='confirmed'?'Confirmed':'Filling'}</span></div>
       <p class="note" style="margin-top:6px">Earnings RM ${priceFor(r.service,stops.length)*stops.length}</p>
+      ${allDone(r)?'':r.stage==='enroute'?'<p style="margin-top:8px"><span class="chip open">On the way, residents notified</span></p>':st==='confirmed'?`<p style="margin-top:8px"><button class="btn small" data-enroute="${r.id}">I’m on my way</button></p>`:''}
       <div style="margin-top:6px">${stops.map((h,i)=>{
         const done = r.done[h];
         return `<div class="stop"><span class="n">${i+1}</span><span><b>No. ${h}</b>${h===HOME.houseNo?' <span class="note">(Aina)</span>':''}<br><span class="note">Arrive about ${addMin(r.time,i*MIN_PER_HOME)}</span></span>
@@ -578,6 +631,54 @@
       render(); toast(`No. ${h} done, resident notified`);
     };
     reader.readAsDataURL(inp.files[0]);
+  });
+  document.addEventListener('change', e=>{ if(e.target.id==='wx') loadWeather(e.target.value); });
+
+  /* ---------- demo: proactive push (built from alerts(), no separate rules) ---------- */
+  const PUSH_MS = 4000;
+  let pushTimer = null, flowTimers = [], pushAlert = null;
+  const clearFlow = () => { flowTimers.forEach(clearTimeout); flowTimers = []; };
+  function hidePush(){ clearTimeout(pushTimer); clearFlow(); pushAlert = null; $('#push').classList.remove('show','tapped'); }
+  function showPush(){
+    const a = alerts()[0];  // most urgent first: storm, then aedes, then calm
+    if(!a){ toast('Forecast still loading'); return false; }
+    if(a.kind==='calm'){ hidePush(); toast('No push needed this week'); return false; }
+    pushAlert = a;
+    const n = a.due;
+    $('#push .pic').innerHTML = I.drop;
+    $('#pushTitle').textContent = a.title;
+    $('#pushBody').textContent = a.kind==='storm'
+      ? `${n} drain point${n>1?'s':''} due for cleaning. Tap to book a cleaner before it arrives.`
+      : 'Dry days after heavy rain are when Aedes mosquitoes breed. Tap to check your gutters and floor traps.';
+    const el = $('#push'); el.classList.remove('tapped'); el.classList.add('show');
+    clearTimeout(pushTimer); pushTimer = setTimeout(hidePush, PUSH_MS);
+    return true;
+  }
+  function openPush(){
+    const a = pushAlert; if(!a) return;
+    hidePush(); closeSheet();
+    if(state.mode!=='resident'){ state.mode = 'resident'; $('#m-res').setAttribute('aria-pressed','true'); $('#m-wrk').setAttribute('aria-pressed','false'); }
+    if(a.kind==='storm'){ state.pickDay = Math.max(0, a.day-1); go('book'); }  // last day before the heavy rain
+    else go('myhome');
+  }
+  function playFlow(){
+    hidePush(); closeSheet();
+    if(state.mode!=='resident'){ state.mode = 'resident'; $('#m-res').setAttribute('aria-pressed','true'); $('#m-wrk').setAttribute('aria-pressed','false'); }
+    go('home');
+    if(!showPush()) return;
+    flowTimers.push(setTimeout(()=>$('#push').classList.add('tapped'), 2200), setTimeout(openPush, 2600));
+  }
+  document.addEventListener('click', e=>{
+    const t = e.target.closest('button'); if(!t) return;
+    if(t.id==='pushDemo'){ clearFlow(); showPush(); }
+    else if(t.id==='pushFlow') playFlow();
+    else if(t.id==='push') openPush();
+  });
+  document.addEventListener('change', e=>{ if(e.target.id==='wx') hidePush(); });
+  document.addEventListener('click', e=>{
+    const t = e.target.closest('button[data-enroute]'); if(!t) return;
+    const r = state.runs.find(x=>x.id===t.dataset.enroute); if(!r) return;
+    r.stage = 'enroute'; render(); toast('Residents notified: you are on the way');
   });
   render();
   loadWeather();
