@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Home Care – township app concept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#E4ECE9; --surface:#FFFFFF; --soft:#EDF4F1; --line:#D5E1DC;
+  --ink:#14302A; --muted:#5A6F69; --brand:#0E5A4E; --brand-ink:#FFFFFF;
+  --rain:#2C67C7; --rain-soft:#DCE7FA; --warn:#9A6212; --warn-soft:#FBEFD9;
+  --danger:#B42318; --danger-soft:#FBE3E0; --ok:#1F7A4D; --ok-soft:#DDF2E6;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#0B1210; --surface:#16201D; --soft:#1D2A26; --line:#2B3B36;
+    --ink:#E4EEEA; --muted:#9BB0A9; --brand:#5CC2AC; --brand-ink:#08201B;
+    --rain:#83A9F2; --rain-soft:#1D2B45; --warn:#E5AF55; --warn-soft:#3A2D14;
+    --danger:#F28A7E; --danger-soft:#43201C; --ok:#6FD39E; --ok-soft:#173326;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--page);color:var(--ink);display:flex;justify-content:center;align-items:center;font-size:15px;line-height:1.45}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:none;background:none}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--rain);outline-offset:2px}
+
+.phone{width:390px;height:844px;background:var(--surface);border-radius:44px;box-shadow:0 0 0 10px #1c2523,0 30px 60px rgba(0,0,0,.25);overflow:hidden;display:flex;flex-direction:column;position:relative}
+@media (max-width:440px),(max-height:880px){
+  body{align-items:stretch}
+  .phone{width:100%;height:100%;border-radius:0;box-shadow:none}
+}
+.concept select{font-size:11px;padding:2px 4px;border-radius:6px}
+.concept{font-size:11px;text-align:center;padding:6px 12px;background:var(--soft);color:var(--muted);padding-top:calc(6px + env(safe-area-inset-top,0px))}
+
+header.top{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px}
+.brand{font-weight:800;font-size:18px;letter-spacing:-.01em;color:var(--brand)}
+.mode{display:flex;background:var(--soft);border-radius:999px;padding:3px}
+.mode button{padding:6px 12px;border-radius:999px;font-size:13px;font-weight:600;color:var(--muted)}
+.mode button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
+main{flex:1;overflow-y:auto;padding:4px 20px 24px}
+h1{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.2}
+h2{font-size:17px;font-weight:700;margin:22px 0 10px}
+.sub{color:var(--muted);font-size:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px}
+.stack>*+*{margin-top:10px}
+
+/* rain strip: the one memorable element */
+.rainbox{background:var(--rain-soft);border-radius:22px;padding:16px 16px 12px;margin-top:16px}
+.rainhead{display:flex;justify-content:space-between;align-items:baseline}
+.rainhead strong{font-size:15px}
+.src{font-size:11px;color:var(--muted)}
+.strip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;height:130px;margin-top:12px;position:relative;align-items:end}
+.threshold{position:absolute;left:0;right:0;border-top:1.5px dashed var(--rain);opacity:.7}
+.threshold span{position:absolute;right:0;top:-17px;font-size:10px;color:var(--rain);font-weight:600}
+.bar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.bar i{display:block;width:100%;max-width:30px;border-radius:8px 8px 4px 4px;background:var(--rain);opacity:.35;min-height:4px}
+.bar.heavy i{opacity:1}
+.bar b{font-size:11px;font-weight:700;margin-bottom:3px}
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:6px;text-align:center;font-size:11px;color:var(--muted)}
+.days .today{color:var(--ink);font-weight:700}
+
+.alert{border-radius:18px;padding:14px 16px;border:1px solid transparent}
+.alert.storm{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.alert.aedes{background:var(--danger-soft);border-color:color-mix(in srgb,var(--danger) 30%,transparent)}
+.alert.calm{background:var(--ok-soft)}
+.alert h3{font-size:15px;font-weight:700}
+.alert p{font-size:13.5px;margin-top:4px}
+.alert .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+
+.btn{background:var(--brand);color:var(--brand-ink);padding:10px 16px;border-radius:12px;font-weight:700;font-size:14px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.small{padding:7px 12px;font-size:13px;border-radius:10px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:6px}
+.tile{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--muted);text-align:center}
+.tile .ic{width:52px;height:52px;border-radius:16px;background:var(--soft);display:grid;place-items:center}
+.tile.new .ic{background:var(--brand);color:var(--brand-ink)}
+.tile.new{color:var(--ink);font-weight:700}
+.tile svg{width:24px;height:24px}
+
+.point{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center}
+.point .name{font-weight:700}
+.meter{grid-column:1/-1;height:6px;border-radius:6px;background:var(--soft);overflow:hidden;margin-top:4px}
+.meter i{display:block;height:100%;border-radius:6px}
+.chip{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.chip.high{background:var(--danger-soft);color:var(--danger)}
+.chip.med{background:var(--warn-soft);color:var(--warn)}
+.chip.low{background:var(--ok-soft);color:var(--ok)}
+.point .meta{font-size:13px;color:var(--muted)}
+
+.daypick{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.daypick button{flex:0 0 auto;width:58px;padding:8px 0;border-radius:14px;border:1px solid var(--line);text-align:center;font-size:12px;color:var(--muted)}
+.daypick button b{display:block;font-size:17px;color:var(--ink)}
+.daypick button .r{display:block;font-size:10.5px;margin-top:2px}
+.daypick button.wet .r{color:var(--rain);font-weight:700}
+.daypick button[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.daypick button[aria-pressed="true"] b,.daypick button[aria-pressed="true"] .r{color:var(--brand-ink)}
+
+.seg{display:flex;gap:8px}
+.seg button{flex:1;padding:10px;border-radius:12px;border:1px solid var(--line);font-size:13.5px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"]{border-color:var(--brand);color:var(--brand);background:var(--soft)}
+
+.slot{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
+.slot .time{font-weight:800;font-size:16px;min-width:52px}
+.slot .who{font-size:14px;font-weight:600}
+.slot .nb{font-size:12.5px;color:var(--ok);font-weight:600}
+.slot .price{text-align:right;font-weight:800}
+.slot .price s{display:block;font-weight:500;font-size:12px;color:var(--muted)}
+
+.row{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.list-plain>div{padding:10px 0;border-bottom:1px solid var(--line)}
+.list-plain>div:last-child{border-bottom:none}
+.note{font-size:13px;color:var(--muted)}
+.empty{text-align:center;padding:22px 10px;color:var(--muted);font-size:14px}
+
+nav.tabs{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);background:var(--surface);padding:8px 6px calc(10px + env(safe-area-inset-bottom,0px))}
+nav.tabs button{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:var(--muted);padding:4px 0}
+nav.tabs button svg{width:22px;height:22px}
+nav.tabs button[aria-current="page"]{color:var(--brand);font-weight:700}
+
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.4);display:none;align-items:flex-end}
+.sheet-bg.open{display:flex}
+.sheet{background:var(--surface);width:100%;border-radius:24px 24px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom,0px))}
+.sheet h3{font-size:19px;font-weight:800}
+.toast{position:absolute;left:50%;bottom:90px;transform:translate(-50%,20px);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;transition:.25s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+select,input[type="time"]{padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface)}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+/* demo: lock-screen style push banner */
+.concept .demo{margin-top:4px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.concept .mini{font-size:11px;font-weight:600;padding:2px 10px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.push{position:absolute;left:10px;right:10px;top:10px;z-index:30;display:flex;gap:10px;align-items:flex-start;text-align:left;padding:10px 12px;border-radius:18px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.28);transform:translateY(-140%);opacity:0;visibility:hidden;transition:transform .35s ease,opacity .35s ease,visibility 0s .35s}
+.push.show{transform:none;opacity:1;visibility:visible;transition-delay:0s}
+.push.tapped{background:var(--soft)}
+.push .pic{flex:none;width:34px;height:34px;border-radius:9px;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center}
+.push .pic svg{width:20px;height:20px}
+.push .pt{min-width:0;flex:1}
+.push .pm{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.push b{display:block;font-size:14px;line-height:1.3}
+.push .pb{display:block;font-size:13px;color:var(--muted);line-height:1.35}
+@media (prefers-reduced-motion:reduce){.push{transition:none}}
+/* order status: 4-step tracker on a booking */
+.steps{display:flex;gap:4px;margin-top:8px}
+.steps i{flex:1;height:4px;border-radius:4px;background:var(--line)}
+.steps i.on{background:var(--brand)}
+.stepnote{display:block;font-size:12px;font-weight:600;margin-top:4px}
+
+.back{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--brand);margin:4px 0 10px}
+.progress{height:10px;border-radius:10px;background:var(--soft);overflow:hidden;margin-top:10px;position:relative}
+.progress i{display:block;height:100%;background:var(--brand);border-radius:10px;transition:width .4s}
+.progress .min{position:absolute;top:-2px;bottom:-2px;border-left:2px solid var(--ink);opacity:.5}
+.tier{display:grid;grid-template-columns:1fr auto;padding:10px 12px;border-radius:12px}
+.tier.on{background:var(--soft);font-weight:800}
+.tier .note{font-weight:400}
+.houses{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.house{min-width:44px;padding:8px 10px;border-radius:12px;background:var(--soft);text-align:center;font-weight:700;font-size:14px}
+.house.me{background:var(--brand);color:var(--brand-ink)}
+.house.empty{background:transparent;border:1.5px dashed var(--line);color:var(--muted);font-weight:500}
+.group{display:block;width:100%;text-align:left}
+.group .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.group .now{font-weight:800;font-size:18px;text-align:right}
+.group .now span{display:block;font-size:11.5px;font-weight:500;color:var(--muted)}
+.chip.open{background:var(--rain-soft);color:var(--rain)}
+.stop{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.stop:last-child{border-bottom:none}
+.stop .n{width:34px;height:34px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-weight:800;font-size:13px}
+.slot .btns{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.linkbtn{font-size:13px;color:var(--muted);text-decoration:underline;margin-top:10px}
+a.btn{text-decoration:none;display:inline-block}
+@media (prefers-reduced-motion:reduce){.progress i{transition:none}}
+
+/* public service reviews */
+.review-stars{color:#E6A817;letter-spacing:2px;font-size:17px}
+.review-meta{font-size:12px;color:var(--muted);margin-top:4px}
+.review-text{margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere}
+.review-summary{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.review-pick{display:flex;gap:6px;margin:10px 0}
+.review-pick button{font-size:30px;color:#E6A817;padding:2px 5px}
+textarea.review-input{width:100%;min-height:100px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit}
+</style>
+</head>
+<body>
+<div class="phone" id="phone">
+  <div class="concept">Concept prototype for the Township of Tomorrow hackathon. Prices and residents are sample data.
+    <label>Weather: <select id="wx" aria-label="Weather source"><option value="live">Live</option><option value="storm">Demo: heavy rain</option><option value="aedes">Demo: after storm</option><option value="calm">Demo: calm</option></select></label>
+    <div class="demo"><button class="mini" id="pushDemo">Demo push</button><button class="mini" id="pushFlow">Play demo flow</button></div></div>
+  <header class="top">
+    <div class="brand">My Township</div>
+    <div class="mode" role="group" aria-label="View as">
+      <button id="m-res" aria-pressed="true">Resident</button>
+      <button id="m-wrk" aria-pressed="false">Cleaner</button>
+    </div>
+  </header>
+  <main id="main"></main>
+  <nav class="tabs" id="tabs"></nav>
+  <div class="sheet-bg" id="sheetBg"><div class="sheet" id="sheet"></div></div>
+  <div class="toast" id="toast" role="status"></div>
+  <button class="push" id="push" aria-live="polite" tabindex="-1"><span class="pic" aria-hidden="true"></span><span class="pt"><span class="pm"><span>My Township</span><span>now</span></span><b id="pushTitle"></b><span class="pb" id="pushBody"></span></span></button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ---------- Supabase (public reviews) ----------
+ * Use only the Project URL and the publishable/anon key here.
+ * Never put a service_role or secret key in this public HTML file. */
+const SUPABASE_URL = 'https://vfkobtliewosdnpydjyb.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_7zeVb-2PXmlnUPJUOx8TNg_a0twFkDT';
+let supabaseClient = null, reviewsLoading = false, reviewsError = '', publicReviews = [];
+let selectedReviewRating = 5;
+let skippedReviewKeys = new Set();
+try { skippedReviewKeys = new Set(JSON.parse(localStorage.getItem('townshipSkippedReviews') || '[]')); } catch (_) {}
+function reviewKey(runId, residentId){ return `${runId}|${residentId}`; }
+function saveSkippedReviews(){ try { localStorage.setItem('townshipSkippedReviews', JSON.stringify([...skippedReviewKeys])); } catch (_) {} }
+function setupSupabase(){
+  if (supabaseClient) return true;
+  if (!window.supabase || SUPABASE_URL.includes('PASTE_YOUR_') || SUPABASE_KEY.includes('PASTE_YOUR_')) return false;
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  return true;
+}
+async function loadPublicReviews(){
+  if (!setupSupabase()) { reviewsError = 'Supabase is not connected yet. Add your Project URL and publishable key in the code.'; render(); return; }
+  reviewsLoading = true; reviewsError = ''; render();
+  const { data, error } = await supabaseClient.from('service_reviews')
+    .select('id, run_id, resident_id, rating, review_text, created_at')
+    .order('created_at', { ascending: false });
+  reviewsLoading = false;
+  if (error) { reviewsError = 'Could not load reviews: ' + error.message; publicReviews = []; }
+  else publicReviews = data || [];
+  render();
+}
+/* each page load gets its own booking ids, so a fresh demo can always be reviewed again */
+const SESSION = Date.now().toString(36);
+const bookingNo = id => '#' + (1000 + [...String(id)].reduce((h,c)=>(h*31 + c.charCodeAt(0)) % 9000, 7));
+
+/* ---------- helpers ---------- */
+const DAY = 86400000;
+const TODAY = new Date(); TODAY.setHours(0,0,0,0);
+const addDays = (d,n) => new Date(d.getTime() + n*DAY);
+const daysSince = d => Math.round((TODAY - d)/DAY);
+const wk = d => d.toLocaleDateString('en-MY',{weekday:'short'});
+const dm = d => d.toLocaleDateString('en-MY',{day:'numeric',month:'short'});
+const rel = d => { const n = Math.round((d-TODAY)/DAY); return n===0?'today':n===1?'tomorrow':'on '+wk(d); };
+const dayLabel = i => i===0?'Today':i===1?'Tomorrow':wk(addDays(TODAY,i));
+const sum = a => a.reduce((x,y)=>x+y,0);
+const $ = s => document.querySelector(s);
+function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed>>>15, 1|seed); t = t + Math.imul(t ^ t>>>7, 61|t) ^ t; return ((t ^ t>>>14)>>>0)/4294967296; }; }
+const addMin = (hhmm, m) => { const [h,mi] = hhmm.split(':').map(Number); const t = h*60+mi+m; const H = Math.floor(t/60), M = t%60; return `${H%12||12}:${String(M).padStart(2,'0')} ${H<12?'am':'pm'}`; };
+
+/* ---------- rules (tune after interviews) ---------- */
+const RULES = { heavyRainMm:20, wetPast3dMm:30, dryDayMm:2, lookAheadDays:3 };
+const SERVICES = { gutter:{label:'Roof gutters', price:70}, full:{label:'Full home check', price:120} };
+// price per home by group size; price only goes down as more homes join
+const TIERS = [ {from:1, label:'1 home', mult:1}, {from:2, label:'2–3 homes', mult:0.86}, {from:4, label:'4–5 homes', mult:0.76}, {from:6, label:'6 homes', mult:0.72} ];
+const tierFor = n => [...TIERS].reverse().find(t=>n>=t.from);
+const priceFor = (svc, n) => Math.round(SERVICES[svc].price * tierFor(n).mult);
+const MIN_PER_HOME = 45, MAX_HOMES = 6;
+
+/* ---------- sample data ---------- */
+const HOME = { owner:'Aina', houseNo:12, address:'No. 12, Jalan Cemara 3, Taman Hijau', street:'Jalan Cemara 3', lat:3.107, lon:101.607 };
+const activeHouseNo = HOME.houseNo;
+const state = {
+  mode:'resident', tab:'home', service:'gutter', pickDay:1, groupId:null,
+  weather:null, source:'sample',
+  points:[
+    {id:'g1', name:'Front roof gutter', interval:30, last:addDays(TODAY,-41), tree:true},
+    {id:'g2', name:'Rear roof gutter', interval:30, last:addDays(TODAY,-19), tree:false},
+    {id:'bal', name:'Balcony floor trap', interval:14, last:addDays(TODAY,-16), tree:false},
+    {id:'por', name:'Porch drain', interval:30, last:addDays(TODAY,-8), tree:false},
+    {id:'yard', name:'Backyard drain', interval:21, last:addDays(TODAY,-24), tree:true},
+  ],
+  slots:[],
+  // every booking is a "run". A solo booking is a run with one home.
+  runs:[
+    {id:`r1-${SESSION}`, street:HOME.street, cleaner:'c1', day:1, time:'09:00', service:'gutter', members:[5,18], min:3, solo:false, done:{}},
+    {id:`r2-${SESSION}`, street:HOME.street, cleaner:'c3', day:4, time:'14:00', service:'full', members:[27], min:3, solo:false, done:{}},
+    {id:`r3-${SESSION}`, street:'Jalan Cemara 5', cleaner:'c1', day:2, time:'14:00', service:'gutter', members:[3,9,14,21], min:3, solo:false, done:{}},
+  ],
+  neighbourPool:[2,7,10,15,22,31,36]
+};
+const CLEANERS = [
+  {id:'c1', name:'Hafiz Drain Care', rating:4.8},
+  {id:'c2', name:'KL Gutter Pro', rating:4.6},
+  {id:'c3', name:'Siva & Sons Plumbing', rating:4.7},
+];
+(function makeSlots(){
+  const r = rng(42);
+  for(let d=0; d<7; d++) CLEANERS.forEach(c=>['09:00','11:00','14:00','16:30'].forEach(t=>{
+    const used = state.runs.some(x=>x.cleaner===c.id && x.day===d && x.time===t);
+    if(!used && r()<0.4) state.slots.push({id:`${c.id}-${d}-${t}`, cleaner:c.id, day:d, time:t});
+  }));
+})();
+/* simulated weather for demos and as the offline fallback; past = last 3 days (mm), days = today + 6 */
+const SCENARIOS = {
+  storm:{ label:'Heavy rain in 2–3 days', past:[3,5,2], days:[0,1,26,34,0.5,0,12], prob:[20,30,80,90,25,15,55] },
+  aedes:{ label:'Dry spell after storm', past:[35,12,8], days:[0,0.5,3,8,2,0,10], prob:[15,20,40,60,30,15,45] },
+  calm: { label:'Calm week', past:[0,2,0], days:[0,3,5,2,0,1,4], prob:[10,25,35,20,10,15,30] },
+};
+const simulatedWeather = key => { const s = SCENARIOS[key];
+  return { past:s.past.slice(), days:s.days.map((v,i)=>({date:addDays(TODAY,i), rain:v, prob:s.prob[i]})) }; };
+
+/* ---------- weather (Open-Meteo, free, no key) ---------- */
+const round1 = v => Math.round((v||0)*10)/10;
+function parseForecast(j){
+  const d = j && j.daily;
+  // past_days=3 + forecast_days=7 -> 10 daily values, first 3 are the past
+  if(!d || !Array.isArray(d.precipitation_sum) || d.precipitation_sum.length<10) throw new Error('unexpected forecast response');
+  const p = d.precipitation_sum, pr = d.precipitation_probability_max || [];
+  return {
+    past: p.slice(0,3).map(round1),
+    days: p.slice(3,10).map((v,i)=>({date:addDays(TODAY,i), rain:round1(v), prob:pr[i+3]??0}))
+  };
+}
+async function fetchLiveWeather(){
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${HOME.lat}&longitude=${HOME.lon}&daily=precipitation_sum,precipitation_probability_max&timezone=Asia%2FKuala_Lumpur&past_days=3&forecast_days=7`;
+  const ctrl = new AbortController(), timer = setTimeout(()=>ctrl.abort(), 6000);
+  try{
+    const res = await fetch(url,{signal:ctrl.signal});
+    if(!res.ok) throw new Error(res.status);
+    return parseForecast(await res.json());
+  } finally { clearTimeout(timer); }
+}
+/* mode: 'live' | a SCENARIOS key. ?weather=storm in the URL picks the starting mode. */
+async function loadWeather(mode){
+  mode = mode || new URLSearchParams(location.search).get('weather') || 'live';
+  if(mode!=='live' && !SCENARIOS[mode]) mode = 'live';
+  $('#wx').value = mode;
+  if(mode==='live'){
+    try{ state.weather = await fetchLiveWeather(); state.source = 'live'; }
+    catch(e){ state.weather = simulatedWeather('storm'); state.source = 'sample'; }
+  }else{
+    state.weather = simulatedWeather(mode); state.source = 'demo'; state.scenario = SCENARIOS[mode].label;
+  }
+  render();
+}
+
+/* ---------- risk logic ---------- */
+function risk(p){
+  const ratio = daysSince(p.last)/p.interval;
+  const wetSoon = state.weather && state.weather.days.slice(0,RULES.lookAheadDays).some(d=>d.rain>=RULES.heavyRainMm);
+  const score = ratio + (p.tree?0.15:0) + (wetSoon?0.1:0);
+  return { ratio, level: score>=1?'high':score>=0.7?'med':'low' };
+}
+function alerts(){
+  const w = state.weather; if(!w) return [];
+  const out = [];
+  const heavy = w.days.slice(0,RULES.lookAheadDays).find(d=>d.rain>=RULES.heavyRainMm);
+  const due = state.points.filter(p=>risk(p).level!=='low');
+  if(heavy && due.length){
+    out.push({kind:'storm', day:w.days.indexOf(heavy), due:due.length, title:`Heavy rain ${rel(heavy.date)}: ${heavy.rain} mm`,
+      body:`${due.length} drain point${due.length>1?'s are':' is'} due for cleaning. Clear ${due.length>1?'them':'it'} first so water doesn’t back up onto your balcony or ceiling.`});
+  }
+  let windowDay = null;
+  const pastWet = sum(w.past) >= RULES.wetPast3dMm;
+  if(pastWet && w.days[0].rain<RULES.dryDayMm && w.days[1].rain<RULES.dryDayMm) windowDay = w.days[0].date;
+  else for(let i=0;i<w.days.length-2;i++){
+    if(w.days[i].rain>=RULES.heavyRainMm && w.days[i+1].rain<RULES.dryDayMm && w.days[i+2].rain<RULES.dryDayMm){ windowDay = w.days[i+1].date; break; }
+  }
+  if(windowDay){
+    out.push({kind:'aedes', title:`Check for standing water ${rel(windowDay)}`,
+      body:'Dry days right after heavy rain are when Aedes mosquitoes breed in water left in gutters and floor traps. Mosquitoes move between neighbouring homes, so a whole street cleaning together protects everyone.'});
+  }
+  if(!out.length) out.push({kind:'calm', title:'Nothing to do this week', body:'Your drains are on schedule and no heavy rain is forecast.'});
+  return out;
+}
+
+/* ---------- run helpers ---------- */
+const cleanerName = id => CLEANERS.find(c=>c.id===id).name;
+const isMine = r => r.members.includes(HOME.houseNo);
+const status = r => r.solo || r.members.length>=r.min ? 'confirmed' : 'open';
+const full = r => r.solo || r.members.length>=MAX_HOMES;
+const deadlineText = r => r.day<=1 ? `today, 9:00 pm` : `${wk(addDays(TODAY,r.day-1))} 9:00 pm`;
+const myRuns = () => state.runs.filter(isMine).sort((a,b)=>a.day-b.day||a.time.localeCompare(b.time));
+/* order status: 1 booked/waiting, 2 confirmed, 3 cleaner on the way, 4 cleaned (derived from the run) */
+const ORDER_STEPS = ['Booked','Confirmed','On the way','Cleaned'];
+const orderStep = r => r.done[HOME.houseNo] ? 4 : r.stage==='enroute' ? 3 : status(r)==='confirmed' ? 2 : 1;
+const orderNote = r => ({1:`Waiting for ${r.min-r.members.length} more home${r.min-r.members.length>1?'s':''} to join`, 2:`Confirmed for ${dayLabel(r.day)} ${r.time}`, 3:'Cleaner is on the way', 4:'Cleaned, after photo sent'})[orderStep(r)];
+const stepper = r => `<span class="steps" role="img" aria-label="Order status: ${ORDER_STEPS[orderStep(r)-1]}">${ORDER_STEPS.map((_,i)=>`<i class="${i<orderStep(r)?'on':''}"></i>`).join('')}</span><span class="stepnote">${orderNote(r)}</span>`;
+const allDone = r => r.members.every(m=>r.done[m]);
+const streetGroups = () => state.runs.filter(r=>!r.solo && r.street===HOME.street && !full(r)).sort((a,b)=>a.day-b.day);
+
+/* ---------- icons ---------- */
+const I = {
+  home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>',
+  drop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>',
+  cloud:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 15a4 4 0 1 1 1-7.9A5 5 0 0 1 18 9a3 3 0 0 1 0 6H7z"/><path d="M8 19l-1 2M12 19l-1 2M16 19l-1 2"/></svg>',
+  cal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  bill:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
+  wrench:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-2.5z"/></svg>',
+  chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>',
+  list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  people:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/></svg>',
+};
+const tileIc = svg => `<span class="ic">${svg}</span>`;
+
+/* ---------- shared pieces ---------- */
+function rainStrip(){
+  const w = state.weather;
+  const max = Math.max(40, ...w.days.map(d=>d.rain));
+  const thrPct = RULES.heavyRainMm/max*100;
+  return `<section class="rainbox" aria-label="Rain forecast for the next 7 days">
+    <div class="rainhead"><strong>Rain this week</strong><span class="src">${state.source==='live'?'Live forecast, Open-Meteo':state.source==='demo'?'Demo: '+state.scenario:'Sample forecast (offline)'}</span></div>
+    <div class="strip">
+      <div class="threshold" style="bottom:${thrPct}%"><span>Heavy ${RULES.heavyRainMm} mm</span></div>
+      ${w.days.map(d=>`<div class="bar ${d.rain>=RULES.heavyRainMm?'heavy':''}"><b>${d.rain}</b><i style="height:${Math.max(3,d.rain/max*100)}%"></i></div>`).join('')}
+    </div>
+    <div class="days">${w.days.map((d,i)=>`<span class="${i===0?'today':''}">${i===0?'Today':wk(d.date)}</span>`).join('')}</div>
+  </section>`;
+}
+function alertCards(){
+  return alerts().map(a=>`<div class="alert ${a.kind}"><h3>${a.title}</h3><p>${a.body}</p>
+    ${a.kind==='calm'?'':`<div class="actions"><button class="btn small" data-go="book">Book a cleaner</button><button class="btn small ghost" data-go="myhome">I’ll do it myself</button></div>`}
+  </div>`).join('');
+}
+function groupCard(r){
+  const n = r.members.length, st = status(r), mine = isMine(r);
+  const pct = n/MAX_HOMES*100, minPct = r.min/MAX_HOMES*100;
+  return `<button class="card group" data-group="${r.id}" aria-label="Open group run on ${dayLabel(r.day)}">
+    <div class="top">
+      <span><b>${dayLabel(r.day)} ${r.time}</b> <span class="chip ${st==='confirmed'?'low':'open'}">${st==='confirmed'?'Going ahead':`Needs ${r.min-n} more`}</span><br>
+      <span class="note">${SERVICES[r.service].label}, ${cleanerName(r.cleaner)}</span></span>
+      <span class="now">RM ${priceFor(r.service,n)}<span>per home now</span></span>
+    </div>
+    <div class="progress"><i style="width:${pct}%"></i><span class="min" style="left:${minPct}%"></span></div>
+    <p class="note" style="margin-top:6px">${n} of ${MAX_HOMES} homes${mine?', including you':''}. ${n<MAX_HOMES?`Next home brings it to RM ${priceFor(r.service,n+1)}.`:''}</p>
+  </button>`;
+}
+function runRows(){
+  const rs = myRuns();
+  if(!rs.length) return '<div class="empty">No bookings yet.</div>';
+  return rs.map(r=>{
+    const doneMe = r.done[HOME.houseNo];
+    return `<div class="row"><span><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${SERVICES[r.service].label}, ${r.solo?'just you':r.members.length+' homes on your street'}</span>${stepper(r)}</span>
+    ${doneMe?'<button class="chip low" data-go="reviews">Cleaned, review</button>':`<button class="chip ${status(r)==='confirmed'?'low':'open'}" ${r.solo?'':`data-group="${r.id}"`}>RM ${priceFor(r.service,r.members.length)}</button>`}</div>`;
+  }).join('');
+}
+
+/* ---------- resident screens ---------- */
+function screenHome(){
+  const invite = streetGroups().find(r=>!isMine(r));
+  const due = state.points.some(p=>risk(p).level!=='low');
+  return `<h1>Good morning, ${HOME.owner}</h1><p class="sub">${HOME.address}</p>
+  ${rainStrip()}
+  <h2>For your home</h2><div class="stack">${alertCards()}
+    ${invite && due?`<div class="alert calm"><h3>Your neighbours are booking a street run</h3><p>${invite.members.length} homes on ${HOME.street} are getting their drains cleaned ${rel(addDays(TODAY,invite.day))}. Join and everyone pays less.</p><div class="actions"><button class="btn small" data-group="${invite.id}">See the group run</button></div></div>`:''}
+  </div>
+  ${myRuns().length?`<h2>Your bookings</h2><div class="card list-plain">${runRows()}</div>`:''}
+  <h2>Services</h2>
+  <div class="tiles">
+    <div class="tile">${tileIc(I.bill)}Bills</div>
+    <div class="tile">${tileIc(I.wrench)}Defects</div>
+    <div class="tile">${tileIc(I.chat)}Enquiry</div>
+    <button class="tile new" data-go="myhome">${tileIc(I.drop)}Home care</button>
+  </div>`;
+}
+
+function screenMyHome(){
+  const rows = state.points.map(p=>{
+    const r = risk(p), pct = Math.min(100, r.ratio*100);
+    const color = r.level==='high'?'var(--danger)':r.level==='med'?'var(--warn)':'var(--ok)';
+    return `<div class="card point">
+      <span class="name">${p.name}</span>
+      <span class="chip ${r.level}">${r.level==='high'?'Clean now':r.level==='med'?'Due soon':'OK'}</span>
+      <span class="meta">Cleaned ${daysSince(p.last)} days ago, every ${p.interval} days${p.tree?', tree nearby':''}</span>
+      <button class="btn small ghost" data-clean="${p.id}">Mark cleaned</button>
+      <div class="meter"><i style="width:${pct}%;background:${color}"></i></div>
+    </div>`;
+  }).join('');
+  return `<h1>My home</h1><p class="sub">${state.points.length} drain points at ${HOME.address.split(',')[0]}</p>
+  <h2>Drain points</h2><div class="stack">${rows}</div>
+  <p class="note" style="margin-top:14px">Cleaning intervals start from your house type and nearby trees. Mark a point as cleaned when you clear it yourself.</p>`;
+}
+
+function screenWeather(){
+  const w = state.weather;
+  const rows = w.days.map((d,i)=>`<div class="row"><span><b>${i===0?'Today':wk(d.date)}</b> <span class="note">${dm(d.date)}</span></span>
+    <span>${d.rain>=RULES.heavyRainMm?'<span class="chip high">Heavy</span> ':''}<b>${d.rain} mm</b> <span class="note">${d.prob}%</span></span></div>`).join('');
+  return `<h1>Rain and alerts</h1><p class="sub">Last 3 days: ${sum(w.past).toFixed(1)} mm of rain</p>
+  ${rainStrip()}
+  <h2>Next 7 days</h2><div class="card list-plain">${rows}</div>
+  <h2>How alerts work</h2>
+  <div class="card stack note">
+    <p><b style="color:var(--ink)">Before heavy rain.</b> If more than ${RULES.heavyRainMm} mm is forecast within ${RULES.lookAheadDays} days and a drain point is due, you’re asked to clear it first.</p>
+    <p><b style="color:var(--ink)">After heavy rain.</b> When heavy rain is followed by two dry days, you’re reminded to check gutters and floor traps for standing water, where Aedes mosquitoes breed.</p>
+  </div>`;
+}
+
+function screenBook(){
+  const w = state.weather;
+  const groups = streetGroups();
+  const days = w.days.map((d,i)=>`<button data-day="${i}" aria-pressed="${state.pickDay===i}" class="${d.rain>=RULES.heavyRainMm?'wet':''}">${i===0?'Today':wk(d.date)}<b>${d.date.getDate()}</b><span class="r">${d.rain>=RULES.heavyRainMm?'Heavy rain':d.rain+' mm'}</span></button>`).join('');
+  const slots = state.slots.filter(s=>s.day===state.pickDay).sort((a,b)=>a.time.localeCompare(b.time));
+  const base = SERVICES[state.service].price;
+  const slotRows = slots.length ? slots.map(s=>`<div class="card slot"><span class="time">${s.time}</span>
+      <span><span class="who">${cleanerName(s.cleaner)}</span><br><span class="note">RM ${base} alone, from RM ${priceFor(state.service,MAX_HOMES)} in a group</span></span>
+      <span class="btns"><button class="btn small" data-group-start="${s.id}">Start group</button><button class="btn small ghost" data-solo="${s.id}">Book alone</button></span>
+    </div>`).join('') : '<div class="empty">No open slots this day. Try another day.</div>';
+  const heavyPicked = w.days[state.pickDay].rain>=RULES.heavyRainMm;
+  return `<h1>Book a cleaner</h1><p class="sub">Book with neighbours on your street and everyone pays less.</p>
+  <h2>Group runs on ${HOME.street}</h2>
+  <div class="stack">${groups.length?groups.map(groupCard).join(''):'<div class="empty">No group runs on your street yet. Start one from a slot below.</div>'}</div>
+  ${myRuns().length?`<h2>Your bookings</h2><div class="card list-plain">${runRows()}</div>`:''}
+  <h2>What needs cleaning</h2>
+  <div class="seg">${Object.entries(SERVICES).map(([k,v])=>`<button data-svc="${k}" aria-pressed="${state.service===k}">${v.label}<br><span class="note">RM ${v.price} per home</span></button>`).join('')}</div>
+  <h2>Pick a day</h2><div class="daypick">${days}</div>
+  ${heavyPicked?'<p class="note" style="margin-top:8px;color:var(--warn)">Heavy rain is forecast this day. Pick an earlier day so the work is done before it arrives.</p>':''}
+  <h2>Open slots</h2><div class="stack">${slotRows}</div>`;
+}
+
+function screenGroup(){
+  const r = state.runs.find(x=>x.id===state.groupId);
+  if(!r) return '<div class="empty">This group run no longer exists.</div>';
+  const n = r.members.length, st = status(r), mine = isMine(r), cur = tierFor(n);
+  const houses = [...r.members].sort((a,b)=>a-b).map(h=>`<span class="house ${h===HOME.houseNo?'me':''}">${h===HOME.houseNo?'You':'No. '+h}</span>`).join('')
+    + Array.from({length:MAX_HOMES-n},()=>'<span class="house empty">Open</span>').join('');
+  const msg = `Our street is getting roof gutters and drains cleaned together on ${dayLabel(r.day)} at ${r.time}. ${n} homes so far, RM ${priceFor(r.service,n)} each and dropping as more join. Join in the My Township app.`;
+  return `<button class="back" data-go="book">‹ Book</button>
+  <h1>${HOME.street} run</h1>
+  <p class="sub">${dayLabel(r.day)} ${dm(addDays(TODAY,r.day))}, starts ${r.time}. ${SERVICES[r.service].label} by ${cleanerName(r.cleaner)}.</p>
+  <div class="card" style="margin-top:16px">
+    <div class="row"><span class="chip ${st==='confirmed'?'low':'open'}">${st==='confirmed'?'Going ahead':`Needs ${r.min-n} more home${r.min-n>1?'s':''}`}</span><span class="note">Joining closes ${deadlineText(r)}</span></div>
+    <div class="progress"><i style="width:${n/MAX_HOMES*100}%"></i><span class="min" style="left:${r.min/MAX_HOMES*100}%"></span></div>
+    <p class="note" style="margin-top:6px">${n} of ${MAX_HOMES} homes. The run goes ahead at ${r.min}.</p>
+    <div class="houses">${houses}</div>
+  </div>
+  <h2>Price per home</h2>
+  <div class="card" style="padding:6px">${TIERS.map(t=>`<div class="tier ${t===cur?'on':''}"><span>${t.label}${t===cur?' <span class="note">(now)</span>':''}</span><span>RM ${Math.round(SERVICES[r.service].price*t.mult)}</span></div>`).join('')}</div>
+  <p class="note" style="margin-top:8px">Everyone pays the lowest price the group reaches, including those who joined first.</p>
+  <div class="actions" style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+    ${mine?'<button class="btn ghost" data-leave="'+r.id+'">Leave group</button>':(n<MAX_HOMES?`<button class="btn" data-join="${r.id}">Join for RM ${priceFor(r.service,n+1)}</button>`:'<span class="note">This run is full.</span>')}
+    <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Share on WhatsApp</a>
+  </div>
+  <p class="note" style="margin-top:14px">If fewer than ${r.min} homes join by the deadline, you can go ahead at the current price or cancel for free.</p>
+  ${n<MAX_HOMES?`<button class="linkbtn" data-sim="${r.id}">Demo: a neighbour joins</button>`:''}`;
+}
+
+/* ---------- cleaner screens ---------- */
+const ME_CLEANER = 'c1';
+function screenJobs(){
+  const rs = state.runs.filter(r=>r.cleaner===ME_CLEANER).sort((a,b)=>a.day-b.day||a.time.localeCompare(b.time));
+  const cards = rs.length ? rs.map(r=>{
+    const stops = [...r.members].sort((a,b)=>a-b);
+    const st = status(r);
+    return `<div class="card">
+      <div class="row"><span><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${r.street}, ${stops.length} home${stops.length>1?'s':''} in one trip, ${SERVICES[r.service].label.toLowerCase()}</span></span>
+      <span class="chip ${st==='confirmed'?'low':'open'}">${st==='confirmed'?'Confirmed':'Filling'}</span></div>
+      <p class="note" style="margin-top:6px">Earnings RM ${priceFor(r.service,stops.length)*stops.length}</p>
+      ${allDone(r)?'':r.stage==='enroute'?'<p style="margin-top:8px"><span class="chip open">On the way, residents notified</span></p>':st==='confirmed'?`<p style="margin-top:8px"><button class="btn small" data-enroute="${r.id}">I’m on my way</button></p>`:''}
+      <div style="margin-top:6px">${stops.map((h,i)=>{
+        const done = r.done[h];
+        return `<div class="stop"><span class="n">${i+1}</span><span><b>No. ${h}</b>${h===HOME.houseNo?' <span class="note">(Aina)</span>':''}<br><span class="note">Arrive about ${addMin(r.time,i*MIN_PER_HOME)}</span></span>
+        ${done?'<span class="chip low">Done</span>':(st==='confirmed'?`<label class="btn small" style="cursor:pointer">After photo<input type="file" accept="image/*" data-done="${r.id}|${h}" hidden></label>`:'')}</div>`;
+      }).join('')}</div>
+    </div>`;
+  }).join('') : '<div class="empty">No runs booked yet.</div>';
+  return `<h1>My runs</h1><p class="sub">${cleanerName(ME_CLEANER)}</p>
+  ${rainStrip()}
+  <h2>Booked runs</h2><div class="stack">${cards}</div>`;
+}
+function screenSlots(){
+  const open = state.slots.filter(s=>s.cleaner===ME_CLEANER).sort((a,b)=>a.day-b.day||a.time.localeCompare(b.time));
+  const opts = state.weather.days.map((d,i)=>`<option value="${i}">${i===0?'Today':wk(d.date)} ${dm(d.date)}${d.rain>=RULES.heavyRainMm?' (heavy rain)':''}</option>`).join('');
+  return `<h1>My time slots</h1><p class="sub">Residents can book an open slot alone or start a street group from it.</p>
+  <h2>Add a slot</h2>
+  <div class="card row"><select id="newDay" aria-label="Day">${opts}</select><input id="newTime" type="time" value="10:00" aria-label="Time"><button class="btn small" id="addSlot">Add slot</button></div>
+  <p class="note" style="margin-top:8px">Demand rises in the 2–3 days before heavy rain. A group run of up to ${MAX_HOMES} homes takes about ${MAX_HOMES*MIN_PER_HOME/60} hours.</p>
+  <h2>Open slots</h2>
+  <div class="card list-plain">${open.length?open.map(s=>`<div class="row"><b>${dayLabel(s.day)} ${s.time}</b><span class="note">Not booked</span></div>`).join(''):'<div class="empty">All your slots are booked.</div>'}</div>`;
+}
+
+/* ---------- public service reviews ---------- */
+function escapeReviewText(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]);
+}
+function screenReviews(){
+  const pendingRuns = state.runs.filter(r => r.members.includes(activeHouseNo) && r.done[activeHouseNo]
+    && !publicReviews.some(v => String(v.run_id)===String(r.id) && String(v.resident_id)===String(activeHouseNo))
+    && !skippedReviewKeys.has(reviewKey(r.id, activeHouseNo)));
+  const pendingHtml = pendingRuns.length ? pendingRuns.map(r => `<article class="card stack"><div class="row"><b>${escapeReviewText(SERVICES[r.service].label)}</b><span class="chip low">Completed</span></div><p class="note">Booking ${bookingNo(r.id)}, ${escapeReviewText(cleanerName(r.cleaner))}</p><div class="row"><button class="btn" data-review-run="${escapeReviewText(r.id)}">Submit review</button><button class="btn ghost" data-skip-review="${escapeReviewText(r.id)}">Not now</button></div></article>`).join('')
+    : '<div class="empty">No completed bookings waiting for your review.</div>';
+  const average = publicReviews.length ? (publicReviews.reduce((t, i) => t + Number(i.rating || 0), 0) / publicReviews.length).toFixed(1) : '—';
+  const content = reviewsLoading ? '<div class="empty">Loading reviews…</div>'
+    : reviewsError ? `<div class="card stack"><p>${escapeReviewText(reviewsError)}</p><button class="btn small" data-refresh-reviews="1">Try again</button></div>`
+    : publicReviews.length ? publicReviews.map(item => {
+        const rating = Math.max(0, Math.min(5, Number(item.rating) || 0));
+        const date = item.created_at ? new Date(item.created_at).toLocaleDateString('en-MY') : '';
+        return `<article class="card">
+          <div class="row"><b>Service review</b><span class="review-stars" aria-label="${rating} out of 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</span></div>
+          <div class="review-meta">${date ? escapeReviewText(date) + ', ' : ''}Booking ${bookingNo(item.run_id || '')}</div>
+          <p class="review-text">${escapeReviewText(item.review_text || 'No written comment.')}</p>
+        </article>`;
+      }).join('')
+    : '<div class="empty">No reviews yet. Completed service reviews will appear here.</div>';
+  return `<h1>Service reviews</h1>
+    <p class="sub">Feedback shared by residents across My Township.</p>
+    <h2>Waiting for your review</h2><div class="stack">${pendingHtml}</div>
+    <div class="card review-summary" style="margin-top:16px">
+      <div><div class="review-meta">Overall rating</div><div style="font-size:30px;font-weight:800">${average}</div></div>
+      <div style="text-align:right"><div class="review-stars">${publicReviews.length ? '★'.repeat(Math.round(Number(average))) : '☆☆☆☆☆'}</div><div class="review-meta">${publicReviews.length} review${publicReviews.length===1?'':'s'}</div></div>
+    </div>
+    <div class="row" style="margin:18px 0 10px"><h2 style="margin:0">All reviews</h2><button class="btn small ghost" data-refresh-reviews="1">Refresh</button></div>
+    <div class="stack">${content}</div>
+    <p class="note" style="margin-top:14px">Only the resident who made a booking can review it, after the cleaner uploads the after photo. Reviews are saved to Supabase and visible to everyone.</p>`;
+}
+
+/* ---------- render ---------- */
+const TABS = {
+  resident:[['home','Home',I.home],['myhome','My home',I.drop],['weather','Rain',I.cloud],['book','Book',I.people],['reviews','Reviews',I.chat]],
+  worker:[['jobs','Runs',I.list],['slots','Slots',I.cal]]
+};
+function render(){
+  const main = $('#main');
+  if(!state.weather){ main.innerHTML = '<div class="empty">Loading forecast…</div>'; return; }
+  const map = {home:screenHome, myhome:screenMyHome, weather:screenWeather, book:screenBook, group:screenGroup, jobs:screenJobs, slots:screenSlots, reviews:screenReviews};
+  main.innerHTML = map[state.tab]();
+  const tabs = TABS[state.mode==='resident'?'resident':'worker'];
+  const current = state.tab==='group'?'book':state.tab;
+  $('#tabs').style.gridTemplateColumns = `repeat(${tabs.length},1fr)`;
+  $('#tabs').innerHTML = tabs.map(([id,label,ic])=>`<button data-tab="${id}" ${current===id?'aria-current="page"':''}>${ic}${label}</button>`).join('');
+}
+function go(tab){ state.tab = tab; render(); $('#main').scrollTop = 0; }
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2400); }
+function openSheet(html){ $('#sheet').innerHTML = html; $('#sheetBg').classList.add('open'); }
+function closeSheet(){ $('#sheetBg').classList.remove('open'); }
+function takeSlot(id){ const i = state.slots.findIndex(s=>s.id===id); return state.slots.splice(i,1)[0]; }
+function sheetRows(rows){ return `<div class="card list-plain" style="margin-top:14px">${rows.map(([k,v])=>`<div class="row"><span class="note">${k}</span><b>${v}</b></div>`).join('')}</div>`; }
+
+document.addEventListener('click', e=>{
+  const t = e.target.closest('button'); if(!t){ if(e.target.id==='sheetBg') closeSheet(); return; }
+  const d = t.dataset;
+  if(d.tab){ go(d.tab); if(d.tab==='reviews') loadPublicReviews(); return; }
+  if(d.refreshReviews) return loadPublicReviews();
+  if(d.reviewRun){
+    selectedReviewRating = 5;
+    const rid = d.reviewRun;
+    return openSheet(`<h3>Submit service review</h3><p class="note" style="margin-top:6px">Booking ${bookingNo(rid)}</p><p style="margin-top:14px"><b>Your rating</b></p><div class="review-pick">${[1,2,3,4,5].map(n=>`<button type="button" data-review-star="${n}" aria-label="${n} stars">${n<=selectedReviewRating?'★':'☆'}</button>`).join('')}</div><label for="reviewText"><b>Written review (optional)</b></label><textarea id="reviewText" class="review-input" maxlength="1000" placeholder="Share your experience..."></textarea><div class="row" style="margin-top:16px"><button class="btn ghost" id="cancelSheet">Cancel</button><button class="btn" data-submit-review="${escapeReviewText(rid)}">Submit review</button></div>`);
+  }
+  if(d.reviewStar){ selectedReviewRating = Number(d.reviewStar); const stars = $('#sheet').querySelector('.review-pick'); if(stars) stars.innerHTML = [1,2,3,4,5].map(n=>`<button type="button" data-review-star="${n}" aria-label="${n} stars">${n<=selectedReviewRating?'★':'☆'}</button>`).join(''); return; }
+  if(d.skipReview){ skippedReviewKeys.add(reviewKey(d.skipReview, activeHouseNo)); saveSkippedReviews(); render(); return toast('Skipped. You can review it later.'); }
+  if(d.submitReview){
+    const rid = d.submitReview;
+    const comment = ($('#reviewText')?.value || '').trim();
+    if(!setupSupabase()) return toast('Supabase is not connected');
+    t.disabled = true; t.textContent = 'Submitting…';
+    supabaseClient.from('service_reviews').insert({run_id:String(rid), resident_id:String(activeHouseNo), rating:selectedReviewRating, review_text:comment}).then(({error})=>{
+      if(error){ t.disabled=false; t.textContent='Submit review'; return toast('Submit failed: '+error.message); }
+      closeSheet(); toast('Review submitted'); loadPublicReviews();
+    });
+    return;
+  }
+  if(d.go){ go(d.go); if(d.go==='reviews') loadPublicReviews(); return; }
+  if(d.group){ state.groupId = d.group; return go('group'); }
+  if(d.svc){ state.service = d.svc; return render(); }
+  if(d.day){ state.pickDay = +d.day; return render(); }
+  if(d.clean){ const p = state.points.find(x=>x.id===d.clean); p.last = new Date(TODAY); render(); return toast(`${p.name} marked as cleaned`); }
+
+  if(d.solo){
+    const s = state.slots.find(x=>x.id===d.solo);
+    return openSheet(`<h3>Book alone</h3>${sheetRows([['Service',SERVICES[state.service].label],['When',`${dayLabel(s.day)} ${dm(addDays(TODAY,s.day))}, ${s.time}`],['Cleaner',cleanerName(s.cleaner)],['Price',`RM ${SERVICES[state.service].price}`]])}
+      <p class="note" style="margin-top:10px">Starting a group from this slot instead could bring the price down to RM ${priceFor(state.service,MAX_HOMES)}.</p>
+      <div class="row" style="margin-top:16px"><button class="btn ghost" id="cancelSheet">Cancel</button><button class="btn" id="confirmSolo" data-slot="${s.id}">Confirm booking</button></div>`);
+  }
+  if(d.groupStart){
+    const s = state.slots.find(x=>x.id===d.groupStart);
+    return openSheet(`<h3>Start a street group</h3>${sheetRows([['Service',SERVICES[state.service].label],['When',`${dayLabel(s.day)} ${dm(addDays(TODAY,s.day))}, starts ${s.time}`],['Cleaner',cleanerName(s.cleaner)],['Joining closes',deadlineText(s)]])}
+      <div class="row" style="margin-top:14px"><label for="minSel">Go ahead when this many homes join</label><select id="minSel"><option>2</option><option selected>3</option><option>4</option></select></div>
+      <p class="note" style="margin-top:10px">You pay RM ${SERVICES[state.service].price} if nobody joins, down to RM ${priceFor(state.service,MAX_HOMES)} with ${MAX_HOMES} homes. Neighbours whose drains are due will see your group on their home screen.</p>
+      <div class="row" style="margin-top:16px"><button class="btn ghost" id="cancelSheet">Cancel</button><button class="btn" id="confirmGroup" data-slot="${s.id}">Start group</button></div>`);
+  }
+  if(t.id==='cancelSheet') return closeSheet();
+  if(t.id==='confirmSolo'){
+    const s = takeSlot(d.slot);
+    state.runs.push({id:'r'+Date.now(), street:HOME.street, cleaner:s.cleaner, day:s.day, time:s.time, service:state.service, members:[HOME.houseNo], min:1, solo:true, done:{}});
+    closeSheet(); render(); return toast('Booking confirmed');
+  }
+  if(t.id==='confirmGroup'){
+    const s = takeSlot(d.slot), id = 'r'+Date.now();
+    state.runs.push({id, street:HOME.street, cleaner:s.cleaner, day:s.day, time:s.time, service:state.service, members:[HOME.houseNo], min:+$('#minSel').value, solo:false, done:{}});
+    closeSheet(); state.groupId = id; go('group'); return toast('Group started. Share it with your neighbours.');
+  }
+  if(d.join){
+    const r = state.runs.find(x=>x.id===d.join); const was = status(r);
+    r.members.push(HOME.houseNo); render();
+    return toast(status(r)==='confirmed' && was!=='confirmed' ? `Group is going ahead. Everyone now pays RM ${priceFor(r.service,r.members.length)}` : `You joined. Price is now RM ${priceFor(r.service,r.members.length)}`);
+  }
+  if(d.leave){
+    const r = state.runs.find(x=>x.id===d.leave);
+    r.members = r.members.filter(h=>h!==HOME.houseNo);
+    if(!r.members.length){ state.runs = state.runs.filter(x=>x!==r); state.slots.push({id:`${r.cleaner}-${r.day}-${r.time}`, cleaner:r.cleaner, day:r.day, time:r.time}); go('book'); }
+    else render();
+    return toast('You left the group');
+  }
+  if(d.sim){
+    const r = state.runs.find(x=>x.id===d.sim); const was = status(r);
+    const h = state.neighbourPool.find(x=>!r.members.includes(x)); if(h==null) return;
+    r.members.push(h); render();
+    return toast(status(r)==='confirmed' && was!=='confirmed' ? 'Enough homes joined. The run is going ahead.' : `No. ${h} joined. Price dropped to RM ${priceFor(r.service,r.members.length)}`);
+  }
+  if(t.id==='addSlot'){
+    const day = +$('#newDay').value, time = $('#newTime').value || '10:00';
+    state.slots.push({id:`${ME_CLEANER}-${day}-${time}-${Date.now()}`, cleaner:ME_CLEANER, day, time});
+    render(); return toast('Slot added');
+  }
+  if(t.id==='m-res' || t.id==='m-wrk'){
+    state.mode = t.id==='m-res'?'resident':'worker';
+    $('#m-res').setAttribute('aria-pressed', state.mode==='resident');
+    $('#m-wrk').setAttribute('aria-pressed', state.mode==='worker');
+    return go(state.mode==='resident'?'home':'jobs');
+  }
+});
+document.addEventListener('change', e=>{
+  const inp = e.target; if(!inp.dataset.done || !inp.files[0]) return;
+  const [rid, h] = inp.dataset.done.split('|'); const r = state.runs.find(x=>x.id===rid);
+  const reader = new FileReader();
+  reader.onload = () => {
+    r.done[h] = reader.result;
+    if(+h===HOME.houseNo) state.points.filter(p=> r.service==='gutter' ? p.id.startsWith('g') : true).forEach(p=>p.last = new Date(TODAY));
+    render(); toast(`No. ${h} done. The resident can now review this booking.`);
+  };
+  reader.readAsDataURL(inp.files[0]);
+});
+document.addEventListener('change', e=>{ if(e.target.id==='wx') loadWeather(e.target.value); });
+
+/* ---------- demo: proactive push (built from alerts(), no separate rules) ---------- */
+const PUSH_MS = 4000;
+let pushTimer = null, flowTimers = [], pushAlert = null;
+const clearFlow = () => { flowTimers.forEach(clearTimeout); flowTimers = []; };
+function hidePush(){ clearTimeout(pushTimer); clearFlow(); pushAlert = null; $('#push').classList.remove('show','tapped'); }
+function showPush(){
+  const a = alerts()[0];  // most urgent first: storm, then aedes, then calm
+  if(!a){ toast('Forecast still loading'); return false; }
+  if(a.kind==='calm'){ hidePush(); toast('No push needed this week'); return false; }
+  pushAlert = a;
+  const n = a.due;
+  $('#push .pic').innerHTML = I.drop;
+  $('#pushTitle').textContent = a.title;
+  $('#pushBody').textContent = a.kind==='storm'
+    ? `${n} drain point${n>1?'s':''} due for cleaning. Tap to book a cleaner before it arrives.`
+    : 'Dry days after heavy rain are when Aedes mosquitoes breed. Tap to check your gutters and floor traps.';
+  const el = $('#push'); el.classList.remove('tapped'); el.classList.add('show');
+  clearTimeout(pushTimer); pushTimer = setTimeout(hidePush, PUSH_MS);
+  return true;
+}
+function openPush(){
+  const a = pushAlert; if(!a) return;
+  hidePush(); closeSheet();
+  if(state.mode!=='resident'){ state.mode = 'resident'; $('#m-res').setAttribute('aria-pressed','true'); $('#m-wrk').setAttribute('aria-pressed','false'); }
+  if(a.kind==='storm'){ state.pickDay = Math.max(0, a.day-1); go('book'); }  // last day before the heavy rain
+  else go('myhome');
+}
+function playFlow(){
+  hidePush(); closeSheet();
+  if(state.mode!=='resident'){ state.mode = 'resident'; $('#m-res').setAttribute('aria-pressed','true'); $('#m-wrk').setAttribute('aria-pressed','false'); }
+  go('home');
+  if(!showPush()) return;
+  flowTimers.push(setTimeout(()=>$('#push').classList.add('tapped'), 2200), setTimeout(openPush, 2600));
+}
+document.addEventListener('click', e=>{
+  const t = e.target.closest('button'); if(!t) return;
+  if(t.id==='pushDemo'){ clearFlow(); showPush(); }
+  else if(t.id==='pushFlow') playFlow();
+  else if(t.id==='push') openPush();
+});
+document.addEventListener('change', e=>{ if(e.target.id==='wx') hidePush(); });
+document.addEventListener('click', e=>{
+  const t = e.target.closest('button[data-enroute]'); if(!t) return;
+  const r = state.runs.find(x=>x.id===t.dataset.enroute); if(!r) return;
+  r.stage = 'enroute'; render(); toast('Residents notified: you are on the way');
+});
+render();
+loadWeather();
+</script>
+</body>
+</html>
