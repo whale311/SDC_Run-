@@ -36,6 +36,7 @@
       body{align-items:stretch}
       .phone{width:100%;height:100%;border-radius:0;box-shadow:none}
     }
+    .concept select{font-size:11px;padding:2px 4px;border-radius:6px}
     .concept{font-size:11px;text-align:center;padding:6px 12px;background:var(--soft);color:var(--muted);padding-top:calc(6px + env(safe-area-inset-top,0px))}
 
     header.top{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px}
@@ -134,6 +135,24 @@
     .toast.show{opacity:1;transform:translate(-50%,0)}
     select,input[type="time"]{padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface)}
     @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+    /* demo: lock-screen style push banner */
+    .concept .demo{margin-top:4px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+    .concept .mini{font-size:11px;font-weight:600;padding:2px 10px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+    .push{position:absolute;left:10px;right:10px;top:10px;z-index:30;display:flex;gap:10px;align-items:flex-start;text-align:left;padding:10px 12px;border-radius:18px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.28);transform:translateY(-140%);opacity:0;visibility:hidden;transition:transform .35s ease,opacity .35s ease,visibility 0s .35s}
+    .push.show{transform:none;opacity:1;visibility:visible;transition-delay:0s}
+    .push.tapped{background:var(--soft)}
+    .push .pic{flex:none;width:34px;height:34px;border-radius:9px;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center}
+    .push .pic svg{width:20px;height:20px}
+    .push .pt{min-width:0;flex:1}
+    .push .pm{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+    .push b{display:block;font-size:14px;line-height:1.3}
+    .push .pb{display:block;font-size:13px;color:var(--muted);line-height:1.35}
+    @media (prefers-reduced-motion:reduce){.push{transition:none}}
+    /* order status: 4-step tracker on a booking */
+    .steps{display:flex;gap:4px;margin-top:8px}
+    .steps i{flex:1;height:4px;border-radius:4px;background:var(--line)}
+    .steps i.on{background:var(--brand)}
+    .stepnote{display:block;font-size:12px;font-weight:600;margin-top:4px}
 
     .back{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--brand);margin:4px 0 10px}
     .progress{height:10px;border-radius:10px;background:var(--soft);overflow:hidden;margin-top:10px;position:relative}
@@ -159,6 +178,7 @@
     a.btn{text-decoration:none;display:inline-block}
     @media (prefers-reduced-motion:reduce){.progress i{transition:none}}
 
+    /* public service reviews */
     .review-stars{color:#E6A817;letter-spacing:2px;font-size:17px}
     .review-meta{font-size:12px;color:var(--muted);margin-top:4px}
     .review-text{margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -170,7 +190,9 @@
 </head>
 <body>
 <div class="phone" id="phone">
-  <div class="concept">Concept prototype for the Township of Tomorrow hackathon. Prices and residents are sample data.</div>
+  <div class="concept">Concept prototype for the Township of Tomorrow hackathon. Prices and residents are sample data.
+    <label>Weather: <select id="wx" aria-label="Weather source"><option value="live">Live</option><option value="storm">Demo: heavy rain</option><option value="aedes">Demo: after storm</option><option value="calm">Demo: calm</option></select></label>
+    <div class="demo"><button class="mini" id="pushDemo">Demo push</button><button class="mini" id="pushFlow">Play demo flow</button></div></div>
   <header class="top">
     <div class="brand">My Township</div>
     <div class="mode" role="group" aria-label="View as">
@@ -182,103 +204,42 @@
   <nav class="tabs" id="tabs"></nav>
   <div class="sheet-bg" id="sheetBg"><div class="sheet" id="sheet"></div></div>
   <div class="toast" id="toast" role="status"></div>
+  <button class="push" id="push" aria-live="polite" tabindex="-1"><span class="pic" aria-hidden="true"></span><span class="pt"><span class="pm"><span>My Township</span><span>now</span></span><b id="pushTitle"></b><span class="pb" id="pushBody"></span></span></button>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  /*
-   * Supabase setup:
-   * Replace both placeholder values with your own Project URL and publishable/anon key.
-   * Never put a service_role or secret key in this public HTML file.
-   */
+  /* ---------- Supabase (public reviews) ----------
+   * Use only the Project URL and the publishable/anon key here.
+   * Never put a service_role or secret key in this public HTML file. */
   const SUPABASE_URL = 'https://vfkobtliewosdnpydjyb.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_7zeVb-2PXmlnUPJUOx8TNg_a0twFkDT';
-
-  /* Separate Supabase project used ONLY to host the Smart Reason agent's
-   * Edge Function. Kept apart from SUPABASE_URL/SUPABASE_KEY above (which
-   * are for the reviews feature) so the two features don't depend on the
-   * same project or the same account's access. */
-  const AGENT_SUPABASE_URL = 'https://yjoylcsdootqfhidfwmx.supabase.co';
-  const AGENT_SUPABASE_KEY = 'sb_publishable_-3yqGFJZ82T6FpkbSbgv4Q_hv6ao35r';
-  let supabaseClient = null;
-  let reviewsLoading = false;
-  let reviewsError = '';
-  let publicReviews = [];
-  // Demo user IDs start at 1. Each newly created booking receives the next unique resident ID.
-  let activeHouseNo = 1;
-  let nextResidentId = 1;
-  function allocateResidentId(){ return nextResidentId++; }
+  let supabaseClient = null, reviewsLoading = false, reviewsError = '', publicReviews = [];
   let selectedReviewRating = 5;
   let skippedReviewKeys = new Set();
   try { skippedReviewKeys = new Set(JSON.parse(localStorage.getItem('townshipSkippedReviews') || '[]')); } catch (_) {}
   function reviewKey(runId, residentId){ return `${runId}|${residentId}`; }
   function saveSkippedReviews(){ try { localStorage.setItem('townshipSkippedReviews', JSON.stringify([...skippedReviewKeys])); } catch (_) {} }
-
   function setupSupabase(){
-    if (!window.supabase || SUPABASE_URL.includes('PASTE_YOUR_') || SUPABASE_KEY.includes('PASTE_YOUR_')) {
-      return false;
-    }
+    if (supabaseClient) return true;
+    if (!window.supabase || SUPABASE_URL.includes('PASTE_YOUR_') || SUPABASE_KEY.includes('PASTE_YOUR_')) return false;
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     return true;
   }
-
   async function loadPublicReviews(){
-    if (!setupSupabase()) {
-      reviewsError = 'Supabase is not connected yet. Add your Project URL and publishable key in the code.';
-      render();
-      return;
-    }
-    reviewsLoading = true;
-    reviewsError = '';
-    render();
-    const { data, error } = await supabaseClient
-      .from('service_reviews')
-      .select('id, run_id, resident_id, rating, review_text, created_at')
-      .order('created_at', { ascending: false });
+    if (!setupSupabase()) { reviewsError = 'Supabase is not connected yet. Add your Project URL and publishable key in the code.'; render(); return; }
+    reviewsLoading = true; reviewsError = ''; render();
+    const { data, error } = await supabaseClient.from('service_reviews')
+            .select('id, run_id, resident_id, rating, review_text, created_at')
+            .order('created_at', { ascending: false });
     reviewsLoading = false;
-    if (error) {
-      reviewsError = 'Could not load reviews: ' + error.message;
-      publicReviews = [];
-    } else {
-      publicReviews = data || [];
-    }
+    if (error) { reviewsError = 'Could not load reviews: ' + error.message; publicReviews = []; }
+    else publicReviews = data || [];
     render();
   }
-
-  /* ---------- Smart Reason agent ----------
-   * Calls a Supabase Edge Function ("generate-message") that asks Claude to
-   * write a short, data-grounded message instead of a static template:
-   *  - 'home_alert'    : why THIS resident should act on their own drains now
-   *  - 'invite_message': why THIS resident is inviting a neighbour, right now
-   * On any failure (not deployed yet, offline, timeout, upstream error) this
-   * resolves to null and callers fall back to the existing static text —
-   * the app never breaks because the agent is unavailable. */
-  const AGENT_URL = `${AGENT_SUPABASE_URL}/functions/v1/generate-message`;
-  // 3.5s was too tight: real round-trips to the Gemini-backed Edge Function
-  // (network + LLM generation) regularly run longer than that, especially on
-  // the first call, so every attempt was silently timing out and falling
-  // back to the static text before the real answer ever arrived. 10s still
-  // keeps a hard ceiling so a dead network can't hang the UI, but gives a
-  // normal response enough room to actually come back.
-  async function generateSmartMessage(type, payload, timeoutMs = 10000){
-    if (AGENT_SUPABASE_URL.includes('PASTE_YOUR_') || AGENT_SUPABASE_KEY.includes('PASTE_YOUR_')) return null;
-    try{
-      const controller = new AbortController();
-      const timer = setTimeout(()=>controller.abort(), timeoutMs);
-      const res = await fetch(AGENT_URL, {
-        method:'POST',
-        headers:{ 'content-type':'application/json', 'apikey':AGENT_SUPABASE_KEY, 'authorization':`Bearer ${AGENT_SUPABASE_KEY}` },
-        body: JSON.stringify({ type, ...payload }),
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if(!res.ok) return null;
-      const data = await res.json();
-      return data.message || null;
-    }catch(_){
-      return null;
-    }
-  }
+  /* each page load gets its own booking ids, so a fresh demo can always be reviewed again */
+  const SESSION = Date.now().toString(36);
+  const bookingNo = id => '#' + (1000 + [...String(id)].reduce((h,c)=>(h*31 + c.charCodeAt(0)) % 9000, 7));
 
   /* ---------- helpers ---------- */
   const DAY = 86400000;
@@ -296,14 +257,6 @@
 
   /* ---------- rules (tune after interviews) ---------- */
   const RULES = { heavyRainMm:20, wetPast3dMm:30, dryDayMm:2, lookAheadDays:3 };
-  // Demo mode: visit this file with ?demo=1 in the address bar to force the
-  // storm-alert threshold low enough that it reliably fires against whatever
-  // the real forecast happens to be that day — so a live demo/recording
-  // doesn't depend on actual heavy rain being forecast at that moment.
-  // Does not affect the app for anyone who opens it normally (no ?demo=1).
-  if (new URLSearchParams(location.search).get('demo') === '1') {
-    RULES.heavyRainMm = 1;
-  }
   const SERVICES = { gutter:{label:'Roof gutters', price:70}, full:{label:'Full home check', price:120} };
   // price per home by group size; price only goes down as more homes join
   const TIERS = [ {from:1, label:'1 home', mult:1}, {from:2, label:'2–3 homes', mult:0.86}, {from:4, label:'4–5 homes', mult:0.76}, {from:6, label:'6 homes', mult:0.72} ];
@@ -312,11 +265,11 @@
   const MIN_PER_HOME = 45, MAX_HOMES = 6;
 
   /* ---------- sample data ---------- */
-  const HOME = { owner:'Resident', houseNo:1, address:'Demo address, Taman Hijau', street:'Jalan Cemara 3' };
+  const HOME = { owner:'Aina', houseNo:12, address:'No. 12, Jalan Cemara 3, Taman Hijau', street:'Jalan Cemara 3', lat:3.107, lon:101.607 };
+  const activeHouseNo = HOME.houseNo;
   const state = {
     mode:'resident', tab:'home', service:'gutter', pickDay:1, groupId:null,
     weather:null, source:'sample',
-    smartAlert:null, smartAlertSig:null, smartAlertPending:null,
     points:[
       {id:'g1', name:'Front roof gutter', interval:30, last:addDays(TODAY,-41), tree:true},
       {id:'g2', name:'Rear roof gutter', interval:30, last:addDays(TODAY,-19), tree:false},
@@ -327,11 +280,12 @@
     slots:[],
     // every booking is a "run". A solo booking is a run with one home.
     runs:[
-
+      {id:`r1-${SESSION}`, street:HOME.street, cleaner:'c1', day:1, time:'09:00', service:'gutter', members:[5,18], min:3, solo:false, done:{}},
+      {id:`r2-${SESSION}`, street:HOME.street, cleaner:'c3', day:4, time:'14:00', service:'full', members:[27], min:3, solo:false, done:{}},
+      {id:`r3-${SESSION}`, street:'Jalan Cemara 5', cleaner:'c1', day:2, time:'14:00', service:'gutter', members:[3,9,14,21], min:3, solo:false, done:{}},
     ],
     neighbourPool:[2,7,10,15,22,31,36]
   };
-  nextResidentId = Math.max(0, ...state.runs.flatMap(r => r.members.map(Number).filter(Number.isFinite))) + 1;
   const CLEANERS = [
     {id:'c1', name:'Hafiz Drain Care', rating:4.8},
     {id:'c2', name:'KL Gutter Pro', rating:4.6},
@@ -344,24 +298,46 @@
       if(!used && r()<0.4) state.slots.push({id:`${c.id}-${d}-${t}`, cleaner:c.id, day:d, time:t});
     }));
   })();
-  const SAMPLE_WEATHER = { past:[18,22,9], days:[0,1,26,34,0.5,0,12], prob:[20,30,80,90,25,15,55] };
+  /* simulated weather for demos and as the offline fallback; past = last 3 days (mm), days = today + 6 */
+  const SCENARIOS = {
+    storm:{ label:'Heavy rain in 2–3 days', past:[3,5,2], days:[0,1,26,34,0.5,0,12], prob:[20,30,80,90,25,15,55] },
+    aedes:{ label:'Dry spell after storm', past:[35,12,8], days:[0,0.5,3,8,2,0,10], prob:[15,20,40,60,30,15,45] },
+    calm: { label:'Calm week', past:[0,2,0], days:[0,3,5,2,0,1,4], prob:[10,25,35,20,10,15,30] },
+  };
+  const simulatedWeather = key => { const s = SCENARIOS[key];
+    return { past:s.past.slice(), days:s.days.map((v,i)=>({date:addDays(TODAY,i), rain:v, prob:s.prob[i]})) }; };
 
   /* ---------- weather (Open-Meteo, free, no key) ---------- */
-  async function loadWeather(){
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=3.107&longitude=101.607&daily=precipitation_sum,precipitation_probability_max&timezone=Asia%2FKuala_Lumpur&past_days=3&forecast_days=7';
+  const round1 = v => Math.round((v||0)*10)/10;
+  function parseForecast(j){
+    const d = j && j.daily;
+    // past_days=3 + forecast_days=7 -> 10 daily values, first 3 are the past
+    if(!d || !Array.isArray(d.precipitation_sum) || d.precipitation_sum.length<10) throw new Error('unexpected forecast response');
+    const p = d.precipitation_sum, pr = d.precipitation_probability_max || [];
+    return {
+      past: p.slice(0,3).map(round1),
+      days: p.slice(3,10).map((v,i)=>({date:addDays(TODAY,i), rain:round1(v), prob:pr[i+3]??0}))
+    };
+  }
+  async function fetchLiveWeather(){
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${HOME.lat}&longitude=${HOME.lon}&daily=precipitation_sum,precipitation_probability_max&timezone=Asia%2FKuala_Lumpur&past_days=3&forecast_days=7`;
+    const ctrl = new AbortController(), timer = setTimeout(()=>ctrl.abort(), 6000);
     try{
-      const res = await fetch(url);
+      const res = await fetch(url,{signal:ctrl.signal});
       if(!res.ok) throw new Error(res.status);
-      const j = await res.json();
-      const p = j.daily.precipitation_sum, pr = j.daily.precipitation_probability_max;
-      state.weather = {
-        past: p.slice(0,3).map(v=>Math.round((v||0)*10)/10),
-        days: p.slice(3,10).map((v,i)=>({date:addDays(TODAY,i), rain:Math.round((v||0)*10)/10, prob:pr[i+3]??0}))
-      };
-      state.source = 'live';
-    }catch(e){
-      state.weather = { past:SAMPLE_WEATHER.past, days:SAMPLE_WEATHER.days.map((v,i)=>({date:addDays(TODAY,i), rain:v, prob:SAMPLE_WEATHER.prob[i]})) };
-      state.source = 'sample';
+      return parseForecast(await res.json());
+    } finally { clearTimeout(timer); }
+  }
+  /* mode: 'live' | a SCENARIOS key. ?weather=storm in the URL picks the starting mode. */
+  async function loadWeather(mode){
+    mode = mode || new URLSearchParams(location.search).get('weather') || 'live';
+    if(mode!=='live' && !SCENARIOS[mode]) mode = 'live';
+    $('#wx').value = mode;
+    if(mode==='live'){
+      try{ state.weather = await fetchLiveWeather(); state.source = 'live'; }
+      catch(e){ state.weather = simulatedWeather('storm'); state.source = 'sample'; }
+    }else{
+      state.weather = simulatedWeather(mode); state.source = 'demo'; state.scenario = SCENARIOS[mode].label;
     }
     render();
   }
@@ -379,7 +355,7 @@
     const heavy = w.days.slice(0,RULES.lookAheadDays).find(d=>d.rain>=RULES.heavyRainMm);
     const due = state.points.filter(p=>risk(p).level!=='low');
     if(heavy && due.length){
-      out.push({kind:'storm', title:`Heavy rain ${rel(heavy.date)}: ${heavy.rain} mm`,
+      out.push({kind:'storm', day:w.days.indexOf(heavy), due:due.length, title:`Heavy rain ${rel(heavy.date)}: ${heavy.rain} mm`,
         body:`${due.length} drain point${due.length>1?'s are':' is'} due for cleaning. Clear ${due.length>1?'them':'it'} first so water doesn’t back up onto your balcony or ceiling.`});
     }
     let windowDay = null;
@@ -398,11 +374,17 @@
 
   /* ---------- run helpers ---------- */
   const cleanerName = id => CLEANERS.find(c=>c.id===id).name;
-  const isMine = r => r.members.includes(activeHouseNo);
+  const isMine = r => r.members.includes(HOME.houseNo);
   const status = r => r.solo || r.members.length>=r.min ? 'confirmed' : 'open';
   const full = r => r.solo || r.members.length>=MAX_HOMES;
   const deadlineText = r => r.day<=1 ? `today, 9:00 pm` : `${wk(addDays(TODAY,r.day-1))} 9:00 pm`;
   const myRuns = () => state.runs.filter(isMine).sort((a,b)=>a.day-b.day||a.time.localeCompare(b.time));
+  /* order status: 1 booked/waiting, 2 confirmed, 3 cleaner on the way, 4 cleaned (derived from the run) */
+  const ORDER_STEPS = ['Booked','Confirmed','On the way','Cleaned'];
+  const orderStep = r => r.done[HOME.houseNo] ? 4 : r.stage==='enroute' ? 3 : status(r)==='confirmed' ? 2 : 1;
+  const orderNote = r => ({1:`Waiting for ${r.min-r.members.length} more home${r.min-r.members.length>1?'s':''} to join`, 2:`Confirmed for ${dayLabel(r.day)} ${r.time}`, 3:'Cleaner is on the way', 4:'Cleaned, after photo sent'})[orderStep(r)];
+  const stepper = r => `<span class="steps" role="img" aria-label="Order status: ${ORDER_STEPS[orderStep(r)-1]}">${ORDER_STEPS.map((_,i)=>`<i class="${i<orderStep(r)?'on':''}"></i>`).join('')}</span><span class="stepnote">${orderNote(r)}</span>`;
+  const allDone = r => r.members.every(m=>r.done[m]);
   const streetGroups = () => state.runs.filter(r=>!r.solo && r.street===HOME.street && !full(r)).sort((a,b)=>a.day-b.day);
 
   /* ---------- icons ---------- */
@@ -425,7 +407,7 @@
     const max = Math.max(40, ...w.days.map(d=>d.rain));
     const thrPct = RULES.heavyRainMm/max*100;
     return `<section class="rainbox" aria-label="Rain forecast for the next 7 days">
-    <div class="rainhead"><strong>Rain this week</strong><span class="src">${state.source==='live'?'Live forecast, Open-Meteo':'Sample forecast (offline)'}</span></div>
+    <div class="rainhead"><strong>Rain this week</strong><span class="src">${state.source==='live'?'Live forecast, Open-Meteo':state.source==='demo'?'Demo: '+state.scenario:'Sample forecast (offline)'}</span></div>
     <div class="strip">
       <div class="threshold" style="bottom:${thrPct}%"><span>Heavy ${RULES.heavyRainMm} mm</span></div>
       ${w.days.map(d=>`<div class="bar ${d.rain>=RULES.heavyRainMm?'heavy':''}"><b>${d.rain}</b><i style="height:${Math.max(3,d.rain/max*100)}%"></i></div>`).join('')}
@@ -434,42 +416,9 @@
   </section>`;
   }
   function alertCards(){
-    return alerts().map(a=>{
-      const smart = state.smartAlert && state.smartAlert.kind===a.kind ? state.smartAlert.text : null;
-      return `<div class="alert ${a.kind}"><h3>${a.title}</h3><p>${smart || a.body}</p>
-    ${smart?'<p class="note" style="margin-top:4px">Written for your home, just now.</p>':''}
+    return alerts().map(a=>`<div class="alert ${a.kind}"><h3>${a.title}</h3><p>${a.body}</p>
     ${a.kind==='calm'?'':`<div class="actions"><button class="btn small" data-go="book">Book a cleaner</button><button class="btn small ghost" data-go="myhome">I’ll do it myself</button></div>`}
-  </div>`;
-    }).join('');
-  }
-
-  /* Fires once per distinct (top-alert-kind + points state); swaps the
-   * static alert body for an agent-written one when it arrives, and
-   * re-renders only if the resident is still looking at the home tab. */
-  async function maybeFetchSmartAlert(){
-    const top = alerts().find(a=>a.kind!=='calm');
-    if(!top) return;
-    const sig = top.kind+'|'+state.points.map(p=>p.id+':'+daysSince(p.last)).join(',');
-    // Bug fixed here: this used to record `sig` as "handled" BEFORE the fetch
-    // resolved, so a single slow/failed attempt (e.g. a cold start on the
-    // very first call of the page) permanently blocked any retry for that
-    // page load, even though a later attempt would have succeeded. Now a
-    // signature is only locked in after a real success; `smartAlertPending`
-    // just prevents firing a second concurrent request for the same state
-    // while one is already in flight.
-    if(state.smartAlertSig===sig || state.smartAlertPending===sig) return;
-    state.smartAlertPending = sig;
-    const text = await generateSmartMessage('home_alert', {
-      service: state.service,
-      points: state.points.map(p=>({name:p.name, daysOverdue:daysSince(p.last), nearTree:!!p.tree})),
-      weather: state.weather.days.slice(0,RULES.lookAheadDays).map((wd,i)=>({day:dayLabel(i), rainMm:wd.rain})),
-    });
-    if(state.smartAlertPending===sig) state.smartAlertPending = null;
-    if(text){
-      state.smartAlertSig = sig;
-      state.smartAlert = { kind: top.kind, text };
-      if(state.tab==='home') render();
-    }
+  </div>`).join('');
   }
   function groupCard(r){
     const n = r.members.length, st = status(r), mine = isMine(r);
@@ -488,9 +437,9 @@
     const rs = myRuns();
     if(!rs.length) return '<div class="empty">No bookings yet.</div>';
     return rs.map(r=>{
-      const doneMe = r.done[activeHouseNo];
-      return `<div class="row"><span><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${SERVICES[r.service].label}, ${r.solo?'just you':r.members.length+' homes on your street'}</span></span>
-    ${doneMe?'<span class="chip low">Cleaned</span>':`<button class="chip ${status(r)==='confirmed'?'low':'open'}" ${r.solo?'':`data-group="${r.id}"`}>RM ${priceFor(r.service,r.members.length)}</button>`}</div>`;
+      const doneMe = r.done[HOME.houseNo];
+      return `<div class="row"><span><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${SERVICES[r.service].label}, ${r.solo?'just you':r.members.length+' homes on your street'}</span>${stepper(r)}</span>
+    ${doneMe?'<button class="chip low" data-go="reviews">Cleaned, review</button>':`<button class="chip ${status(r)==='confirmed'?'low':'open'}" ${r.solo?'':`data-group="${r.id}"`}>RM ${priceFor(r.service,r.members.length)}</button>`}</div>`;
     }).join('');
   }
 
@@ -570,8 +519,9 @@
     const r = state.runs.find(x=>x.id===state.groupId);
     if(!r) return '<div class="empty">This group run no longer exists.</div>';
     const n = r.members.length, st = status(r), mine = isMine(r), cur = tierFor(n);
-    const houses = [...r.members].sort((a,b)=>a-b).map(h=>`<span class="house ${h===activeHouseNo?'me':''}">${h===activeHouseNo?'You':'No. '+h}</span>`).join('')
+    const houses = [...r.members].sort((a,b)=>a-b).map(h=>`<span class="house ${h===HOME.houseNo?'me':''}">${h===HOME.houseNo?'You':'No. '+h}</span>`).join('')
             + Array.from({length:MAX_HOMES-n},()=>'<span class="house empty">Open</span>').join('');
+    const msg = `Our street is getting roof gutters and drains cleaned together on ${dayLabel(r.day)} at ${r.time}. ${n} homes so far, RM ${priceFor(r.service,n)} each and dropping as more join. Join in the My Township app.`;
     return `<button class="back" data-go="book">‹ Book</button>
   <h1>${HOME.street} run</h1>
   <p class="sub">${dayLabel(r.day)} ${dm(addDays(TODAY,r.day))}, starts ${r.time}. ${SERVICES[r.service].label} by ${cleanerName(r.cleaner)}.</p>
@@ -586,7 +536,7 @@
   <p class="note" style="margin-top:8px">Everyone pays the lowest price the group reaches, including those who joined first.</p>
   <div class="actions" style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
     ${mine?'<button class="btn ghost" data-leave="'+r.id+'">Leave group</button>':(n<MAX_HOMES?`<button class="btn" data-join="${r.id}">Join for RM ${priceFor(r.service,n+1)}</button>`:'<span class="note">This run is full.</span>')}
-    <button class="btn ghost" data-smart-invite="${r.id}">Share on WhatsApp</button>
+    <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Share on WhatsApp</a>
   </div>
   <p class="note" style="margin-top:14px">If fewer than ${r.min} homes join by the deadline, you can go ahead at the current price or cancel for free.</p>
   ${n<MAX_HOMES?`<button class="linkbtn" data-sim="${r.id}">Demo: a neighbour joins</button>`:''}`;
@@ -603,9 +553,10 @@
       <div class="row"><span><b>${dayLabel(r.day)} ${r.time}</b><br><span class="note">${r.street}, ${stops.length} home${stops.length>1?'s':''} in one trip, ${SERVICES[r.service].label.toLowerCase()}</span></span>
       <span class="chip ${st==='confirmed'?'low':'open'}">${st==='confirmed'?'Confirmed':'Filling'}</span></div>
       <p class="note" style="margin-top:6px">Earnings RM ${priceFor(r.service,stops.length)*stops.length}</p>
+      ${allDone(r)?'':r.stage==='enroute'?'<p style="margin-top:8px"><span class="chip open">On the way, residents notified</span></p>':st==='confirmed'?`<p style="margin-top:8px"><button class="btn small" data-enroute="${r.id}">I’m on my way</button></p>`:''}
       <div style="margin-top:6px">${stops.map((h,i)=>{
         const done = r.done[h];
-        return `<div class="stop"><span class="n">${i+1}</span><span><b>No. ${h}</b>${h===activeHouseNo?' <span class="note">(Aina)</span>':''}<br><span class="note">Arrive about ${addMin(r.time,i*MIN_PER_HOME)}</span></span>
+        return `<div class="stop"><span class="n">${i+1}</span><span><b>No. ${h}</b>${h===HOME.houseNo?' <span class="note">(Aina)</span>':''}<br><span class="note">Arrive about ${addMin(r.time,i*MIN_PER_HOME)}</span></span>
         ${done?'<span class="chip low">Done</span>':(st==='confirmed'?`<label class="btn small" style="cursor:pointer">After photo<input type="file" accept="image/*" data-done="${r.id}|${h}" hidden></label>`:'')}</div>`;
       }).join('')}</div>
     </div>`;
@@ -626,46 +577,38 @@
   }
 
   /* ---------- public service reviews ---------- */
-  function screenReviews(){
-    // Keep the currently assigned demo user. Never overwrite it with a hard-coded house number.
-    const pendingRuns = state.runs.filter(r => r.members.includes(activeHouseNo) && r.done[activeHouseNo] && !publicReviews.some(v => String(v.run_id)===String(r.id) && String(v.resident_id)===String(activeHouseNo)) && !skippedReviewKeys.has(reviewKey(r.id, activeHouseNo)));
-    const pendingHtml = pendingRuns.length ? pendingRuns.map(r => `<article class="card stack"><div class="row"><b>${escapeReviewText(SERVICES[r.service].label)}</b><span class="chip low">Completed</span></div><p class="note">Booking ${escapeReviewText(r.id)} · House No. ${activeHouseNo}</p><div class="row"><button class="btn" data-review-run="${escapeReviewText(r.id)}">Submit review</button><button class="btn ghost" data-skip-review="${escapeReviewText(r.id)}">Not now</button></div></article>`).join('') : '<div class="empty">No completed bookings waiting for review for this demo resident.</div>';
-    const average = publicReviews.length
-      ? (publicReviews.reduce((total, item) => total + Number(item.rating || 0), 0) / publicReviews.length).toFixed(1)
-      : '—';
-    const content = reviewsLoading
-      ? '<div class="empty">Loading reviews…</div>'
-      : reviewsError
-        ? `<div class="card stack"><p>${escapeReviewText(reviewsError)}</p><button class="btn small" data-refresh-reviews>Try again</button></div>`
-        : publicReviews.length
-          ? publicReviews.map(item => {
-              const rating = Math.max(0, Math.min(5, Number(item.rating) || 0));
-              const date = item.created_at ? new Date(item.created_at).toLocaleDateString('en-MY') : '';
-              return `<article class="card">
-                <div class="row"><b>Service review</b><span class="review-stars" aria-label="${rating} out of 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</span></div>
-                <div class="review-meta">${date ? escapeReviewText(date) + ' · ' : ''}Booking ${escapeReviewText(item.run_id || '')}</div>
-                <p class="review-text">${escapeReviewText(item.review_text || 'No written comment.')}</p>
-              </article>`;
-            }).join('')
-          : '<div class="empty">No reviews yet. Completed service reviews will appear here.</div>';
-
-    return `<h1>Service Reviews</h1>
-      <p class="sub">Read feedback shared by residents across My Township.</p>
-      <div class="card stack" style="margin-top:14px"><b>Current demo user: User ${activeHouseNo}</b><p class="note">Only this resident's completed bookings appear here. Reviews are linked automatically to the booking and resident number; no manual switching is needed.</p></div>
-      <h2>Completed services awaiting review</h2><div class="stack">${pendingHtml}</div>
-      <div class="card review-summary" style="margin-top:16px">
-        <div><div class="review-meta">Overall rating</div><div style="font-size:30px;font-weight:800">${average}</div></div>
-        <div style="text-align:right"><div class="review-stars">${publicReviews.length ? '★'.repeat(Math.round(Number(average))) : '☆☆☆☆☆'}</div><div class="review-meta">${publicReviews.length} review${publicReviews.length===1?'':'s'}</div></div>
-      </div>
-      <div class="row" style="margin:18px 0 10px"><h2 style="margin:0">All reviews</h2><button class="btn small ghost" data-refresh-reviews>Refresh</button></div>
-      <div class="stack">${content}</div>
-      <p class="note" style="margin-top:14px">Reviews saved to Supabase are visible to everyone. This prototype assigns a new numeric user ID to each new booking. A real deployment should use authenticated resident accounts.</p>`;
-  }
-
   function escapeReviewText(value){
-    return String(value ?? '').replace(/[&<>"']/g, ch => ({
-      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
-    })[ch]);
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]);
+  }
+  function screenReviews(){
+    const pendingRuns = state.runs.filter(r => r.members.includes(activeHouseNo) && r.done[activeHouseNo]
+            && !publicReviews.some(v => String(v.run_id)===String(r.id) && String(v.resident_id)===String(activeHouseNo))
+            && !skippedReviewKeys.has(reviewKey(r.id, activeHouseNo)));
+    const pendingHtml = pendingRuns.length ? pendingRuns.map(r => `<article class="card stack"><div class="row"><b>${escapeReviewText(SERVICES[r.service].label)}</b><span class="chip low">Completed</span></div><p class="note">Booking ${bookingNo(r.id)}, ${escapeReviewText(cleanerName(r.cleaner))}</p><div class="row"><button class="btn" data-review-run="${escapeReviewText(r.id)}">Submit review</button><button class="btn ghost" data-skip-review="${escapeReviewText(r.id)}">Not now</button></div></article>`).join('')
+            : '<div class="empty">No completed bookings waiting for your review.</div>';
+    const average = publicReviews.length ? (publicReviews.reduce((t, i) => t + Number(i.rating || 0), 0) / publicReviews.length).toFixed(1) : '—';
+    const content = reviewsLoading ? '<div class="empty">Loading reviews…</div>'
+            : reviewsError ? `<div class="card stack"><p>${escapeReviewText(reviewsError)}</p><button class="btn small" data-refresh-reviews="1">Try again</button></div>`
+                    : publicReviews.length ? publicReviews.map(item => {
+                              const rating = Math.max(0, Math.min(5, Number(item.rating) || 0));
+                              const date = item.created_at ? new Date(item.created_at).toLocaleDateString('en-MY') : '';
+                              return `<article class="card">
+          <div class="row"><b>Service review</b><span class="review-stars" aria-label="${rating} out of 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</span></div>
+          <div class="review-meta">${date ? escapeReviewText(date) + ', ' : ''}Booking ${bookingNo(item.run_id || '')}</div>
+          <p class="review-text">${escapeReviewText(item.review_text || 'No written comment.')}</p>
+        </article>`;
+                            }).join('')
+                            : '<div class="empty">No reviews yet. Completed service reviews will appear here.</div>';
+    return `<h1>Service reviews</h1>
+    <p class="sub">Feedback shared by residents across My Township.</p>
+    <h2>Waiting for your review</h2><div class="stack">${pendingHtml}</div>
+    <div class="card review-summary" style="margin-top:16px">
+      <div><div class="review-meta">Overall rating</div><div style="font-size:30px;font-weight:800">${average}</div></div>
+      <div style="text-align:right"><div class="review-stars">${publicReviews.length ? '★'.repeat(Math.round(Number(average))) : '☆☆☆☆☆'}</div><div class="review-meta">${publicReviews.length} review${publicReviews.length===1?'':'s'}</div></div>
+    </div>
+    <div class="row" style="margin:18px 0 10px"><h2 style="margin:0">All reviews</h2><button class="btn small ghost" data-refresh-reviews="1">Refresh</button></div>
+    <div class="stack">${content}</div>
+    <p class="note" style="margin-top:14px">Only the resident who made a booking can review it, after the cleaner uploads the after photo. Reviews are saved to Supabase and visible to everyone.</p>`;
   }
 
   /* ---------- render ---------- */
@@ -682,7 +625,6 @@
     const current = state.tab==='group'?'book':state.tab;
     $('#tabs').style.gridTemplateColumns = `repeat(${tabs.length},1fr)`;
     $('#tabs').innerHTML = tabs.map(([id,label,ic])=>`<button data-tab="${id}" ${current===id?'aria-current="page"':''}>${ic}${label}</button>`).join('');
-    if(state.tab==='home') maybeFetchSmartAlert();
   }
   function go(tab){ state.tab = tab; render(); $('#main').scrollTop = 0; }
   function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2400); }
@@ -699,10 +641,10 @@
     if(d.reviewRun){
       selectedReviewRating = 5;
       const rid = d.reviewRun;
-      return openSheet(`<h3>Submit service review</h3><p class="note" style="margin-top:6px">Booking ${escapeReviewText(rid)} · House No. ${activeHouseNo}</p><p style="margin-top:14px"><b>Your rating</b></p><div class="review-pick">${[1,2,3,4,5].map(n=>`<button type="button" data-review-star="${n}" aria-label="${n} stars">${n<=selectedReviewRating?'★':'☆'}</button>`).join('')}</div><label for="reviewText"><b>Written review (optional)</b></label><textarea id="reviewText" class="review-input" maxlength="1000" placeholder="Share your experience..."></textarea><div class="row" style="margin-top:16px"><button class="btn ghost" id="cancelSheet">Cancel</button><button class="btn" data-submit-review="${escapeReviewText(rid)}">Submit review</button></div>`);
+      return openSheet(`<h3>Submit service review</h3><p class="note" style="margin-top:6px">Booking ${bookingNo(rid)}</p><p style="margin-top:14px"><b>Your rating</b></p><div class="review-pick">${[1,2,3,4,5].map(n=>`<button type="button" data-review-star="${n}" aria-label="${n} stars">${n<=selectedReviewRating?'★':'☆'}</button>`).join('')}</div><label for="reviewText"><b>Written review (optional)</b></label><textarea id="reviewText" class="review-input" maxlength="1000" placeholder="Share your experience..."></textarea><div class="row" style="margin-top:16px"><button class="btn ghost" id="cancelSheet">Cancel</button><button class="btn" data-submit-review="${escapeReviewText(rid)}">Submit review</button></div>`);
     }
     if(d.reviewStar){ selectedReviewRating = Number(d.reviewStar); const stars = $('#sheet').querySelector('.review-pick'); if(stars) stars.innerHTML = [1,2,3,4,5].map(n=>`<button type="button" data-review-star="${n}" aria-label="${n} stars">${n<=selectedReviewRating?'★':'☆'}</button>`).join(''); return; }
-    if(d.skipReview){ skippedReviewKeys.add(reviewKey(d.skipReview, activeHouseNo)); saveSkippedReviews(); render(); return toast('You can leave this review later by clearing the skipped state in this demo.'); }
+    if(d.skipReview){ skippedReviewKeys.add(reviewKey(d.skipReview, activeHouseNo)); saveSkippedReviews(); render(); return toast('Skipped. You can review it later.'); }
     if(d.submitReview){
       const rid = d.submitReview;
       const comment = ($('#reviewText')?.value || '').trim();
@@ -714,37 +656,7 @@
       });
       return;
     }
-    if(d.smartInvite){
-      const r = state.runs.find(x=>x.id===d.smartInvite);
-      if(!r) return;
-      const fallback = `Our street is getting roof gutters and drains cleaned together on ${dayLabel(r.day)} at ${r.time}. ${r.members.length} homes so far, RM ${priceFor(r.service,r.members.length)} each and dropping as more join. Join in the My Township app.`;
-      // Used to call window.open() straight from the .then() of an async
-      // fetch, which Chrome's popup blocker routinely kills silently
-      // (window.open only reliably escapes the blocker when it runs
-      // synchronously inside the click handler, not after an awaited
-      // delay) — so the invite could "work" and still never visibly do
-      // anything. Showing the text in-page with a real <a href> the
-      // person clicks themselves sidesteps the blocker entirely, and is
-      // also a better demo: the generated text is visible on screen
-      // instead of flashing past into another tab.
-      openSheet(`<h3>Writing a personal note…</h3><p class="note" style="margin-top:8px">This takes a few seconds.</p>`);
-      generateSmartMessage('invite_message', {
-        service: r.service,
-        points: state.points.map(p=>({name:p.name, daysOverdue:daysSince(p.last), nearTree:!!p.tree})),
-        weather: state.weather.days.slice(0,RULES.lookAheadDays).map((wd,i)=>({day:dayLabel(i), rainMm:wd.rain})),
-        run: { day:dayLabel(r.day), time:r.time, priceNow:priceFor(r.service,r.members.length), members:r.members.length, min:r.min },
-      }).then(text=>{
-        const finalText = text || fallback;
-        const waLink = `https://wa.me/?text=${encodeURIComponent(finalText)}`;
-        const safeText = finalText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        openSheet(`<h3>Your WhatsApp invite</h3>
-        ${text?'<p class="note" style="margin-top:6px">Written for this run, just now.</p>':''}
-        <div class="card" style="padding:14px;margin-top:12px;white-space:pre-wrap">${safeText}</div>
-        <div class="row" style="margin-top:16px"><button class="btn ghost" id="cancelSheet">Close</button><a class="btn" href="${waLink}" target="_blank" rel="noopener">Open in WhatsApp</a></div>`);
-      });
-      return;
-    }
-    if(d.go) return go(d.go);
+    if(d.go){ go(d.go); if(d.go==='reviews') loadPublicReviews(); return; }
     if(d.group){ state.groupId = d.group; return go('group'); }
     if(d.svc){ state.service = d.svc; return render(); }
     if(d.day){ state.pickDay = +d.day; return render(); }
@@ -766,26 +678,22 @@
     if(t.id==='cancelSheet') return closeSheet();
     if(t.id==='confirmSolo'){
       const s = takeSlot(d.slot);
-      const userId = allocateResidentId();
-      activeHouseNo = userId;
-      state.runs.push({id:'r'+Date.now(), street:HOME.street, cleaner:s.cleaner, day:s.day, time:s.time, service:state.service, members:[userId], min:1, solo:true, done:{}});
-      closeSheet(); render(); return toast(`Booking confirmed. Your demo user ID is ${userId}.`);
+      state.runs.push({id:'r'+Date.now(), street:HOME.street, cleaner:s.cleaner, day:s.day, time:s.time, service:state.service, members:[HOME.houseNo], min:1, solo:true, done:{}});
+      closeSheet(); render(); return toast('Booking confirmed');
     }
     if(t.id==='confirmGroup'){
       const s = takeSlot(d.slot), id = 'r'+Date.now();
-      const userId = allocateResidentId();
-      activeHouseNo = userId;
-      state.runs.push({id, street:HOME.street, cleaner:s.cleaner, day:s.day, time:s.time, service:state.service, members:[userId], min:+$('#minSel').value, solo:false, done:{}});
-      closeSheet(); state.groupId = id; go('group'); return toast(`Group started. Your demo user ID is ${userId}.`);
+      state.runs.push({id, street:HOME.street, cleaner:s.cleaner, day:s.day, time:s.time, service:state.service, members:[HOME.houseNo], min:+$('#minSel').value, solo:false, done:{}});
+      closeSheet(); state.groupId = id; go('group'); return toast('Group started. Share it with your neighbours.');
     }
     if(d.join){
       const r = state.runs.find(x=>x.id===d.join); const was = status(r);
-      r.members.push(activeHouseNo); render();
+      r.members.push(HOME.houseNo); render();
       return toast(status(r)==='confirmed' && was!=='confirmed' ? `Group is going ahead. Everyone now pays RM ${priceFor(r.service,r.members.length)}` : `You joined. Price is now RM ${priceFor(r.service,r.members.length)}`);
     }
     if(d.leave){
       const r = state.runs.find(x=>x.id===d.leave);
-      r.members = r.members.filter(h=>h!==activeHouseNo);
+      r.members = r.members.filter(h=>h!==HOME.houseNo);
       if(!r.members.length){ state.runs = state.runs.filter(x=>x!==r); state.slots.push({id:`${r.cleaner}-${r.day}-${r.time}`, cleaner:r.cleaner, day:r.day, time:r.time}); go('book'); }
       else render();
       return toast('You left the group');
@@ -809,16 +717,63 @@
     }
   });
   document.addEventListener('change', e=>{
-    const inp = e.target;
-    if(!inp.dataset.done || !inp.files[0]) return;
+    const inp = e.target; if(!inp.dataset.done || !inp.files[0]) return;
     const [rid, h] = inp.dataset.done.split('|'); const r = state.runs.find(x=>x.id===rid);
     const reader = new FileReader();
     reader.onload = () => {
       r.done[h] = reader.result;
-      if(+h===activeHouseNo) state.points.filter(p=> r.service==='gutter' ? p.id.startsWith('g') : true).forEach(p=>p.last = new Date(TODAY));
-      render(); toast(`No. ${h} done. That resident can now review this booking.`);
+      if(+h===HOME.houseNo) state.points.filter(p=> r.service==='gutter' ? p.id.startsWith('g') : true).forEach(p=>p.last = new Date(TODAY));
+      render(); toast(`No. ${h} done. The resident can now review this booking.`);
     };
     reader.readAsDataURL(inp.files[0]);
+  });
+  document.addEventListener('change', e=>{ if(e.target.id==='wx') loadWeather(e.target.value); });
+
+  /* ---------- demo: proactive push (built from alerts(), no separate rules) ---------- */
+  const PUSH_MS = 4000;
+  let pushTimer = null, flowTimers = [], pushAlert = null;
+  const clearFlow = () => { flowTimers.forEach(clearTimeout); flowTimers = []; };
+  function hidePush(){ clearTimeout(pushTimer); clearFlow(); pushAlert = null; $('#push').classList.remove('show','tapped'); }
+  function showPush(){
+    const a = alerts()[0];  // most urgent first: storm, then aedes, then calm
+    if(!a){ toast('Forecast still loading'); return false; }
+    if(a.kind==='calm'){ hidePush(); toast('No push needed this week'); return false; }
+    pushAlert = a;
+    const n = a.due;
+    $('#push .pic').innerHTML = I.drop;
+    $('#pushTitle').textContent = a.title;
+    $('#pushBody').textContent = a.kind==='storm'
+            ? `${n} drain point${n>1?'s':''} due for cleaning. Tap to book a cleaner before it arrives.`
+            : 'Dry days after heavy rain are when Aedes mosquitoes breed. Tap to check your gutters and floor traps.';
+    const el = $('#push'); el.classList.remove('tapped'); el.classList.add('show');
+    clearTimeout(pushTimer); pushTimer = setTimeout(hidePush, PUSH_MS);
+    return true;
+  }
+  function openPush(){
+    const a = pushAlert; if(!a) return;
+    hidePush(); closeSheet();
+    if(state.mode!=='resident'){ state.mode = 'resident'; $('#m-res').setAttribute('aria-pressed','true'); $('#m-wrk').setAttribute('aria-pressed','false'); }
+    if(a.kind==='storm'){ state.pickDay = Math.max(0, a.day-1); go('book'); }  // last day before the heavy rain
+    else go('myhome');
+  }
+  function playFlow(){
+    hidePush(); closeSheet();
+    if(state.mode!=='resident'){ state.mode = 'resident'; $('#m-res').setAttribute('aria-pressed','true'); $('#m-wrk').setAttribute('aria-pressed','false'); }
+    go('home');
+    if(!showPush()) return;
+    flowTimers.push(setTimeout(()=>$('#push').classList.add('tapped'), 2200), setTimeout(openPush, 2600));
+  }
+  document.addEventListener('click', e=>{
+    const t = e.target.closest('button'); if(!t) return;
+    if(t.id==='pushDemo'){ clearFlow(); showPush(); }
+    else if(t.id==='pushFlow') playFlow();
+    else if(t.id==='push') openPush();
+  });
+  document.addEventListener('change', e=>{ if(e.target.id==='wx') hidePush(); });
+  document.addEventListener('click', e=>{
+    const t = e.target.closest('button[data-enroute]'); if(!t) return;
+    const r = state.runs.find(x=>x.id===t.dataset.enroute); if(!r) return;
+    r.stage = 'enroute'; render(); toast('Residents notified: you are on the way');
   });
   render();
   loadWeather();
